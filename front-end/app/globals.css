@@ -44,3 +44,70 @@ body {
 html {
   scroll-behavior: smooth;
 }
+
+/* Custom Scrollbar Styles */
+/* Left Sidebar Scrollbar - Purple/Blue theme, positioned on left */
+.custom-scrollbar-left {
+  direction: rtl; /* Reverse direction to put scrollbar on left */
+  scrollbar-width: thin;
+  scrollbar-color: #a855f7 rgba(31, 41, 55, 0.3);
+  padding-left: 12px; /* Gap between scrollbar and content */
+}
+
+.custom-scrollbar-left > * {
+  direction: ltr; /* Reset direction for content */
+}
+
+.custom-scrollbar-left::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar-left::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.3);
+  border-radius: 10px;
+  margin: 16px 0; /* Gap top and bottom for scrollbar track */
+}
+
+.custom-scrollbar-left::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #a855f7 0%, #3b82f6 100%);
+  border-radius: 10px;
+}
+
+.custom-scrollbar-left::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #9333ea 0%, #2563eb 100%);
+}
+
+/* Right Panel Scrollbar - Different style */
+.custom-scrollbar-right::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar-right::-webkit-scrollbar-track {
+  background: rgba(17, 24, 39, 0.5);
+  border-radius: 10px;
+}
+
+.custom-scrollbar-right::-webkit-scrollbar-thumb {
+  background: rgba(107, 114, 128, 0.5);
+  border-radius: 10px;
+}
+
+.custom-scrollbar-right::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.7);
+}
+
+/* Firefox - Right Panel */
+.custom-scrollbar-right {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(107, 114, 128, 0.5) rgba(17, 24, 39, 0.5);
+}
+
+/* Hidden Scrollbar - For sidebar content */
+.hide-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
