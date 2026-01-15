@@ -67,7 +67,10 @@ export default function PromptBarsStack({ items }) {
         const deltas = cards.map((el) => el.getBoundingClientRect().top - firstTop);
 
         const stackGapY = 88;
-        const scrollDistance = Math.max(1, (cards.length - 1) * window.innerHeight * 0.9);
+        // Reduce the pinned scroll distance so the last card doesn't feel "too far"
+        // from the next section (footer). We give each step a reasonable pixel budget.
+        const stepScroll = Math.min(Math.max(window.innerHeight * 0.45, 360), 520);
+        const scrollDistance = Math.max(1, (cards.length - 1) * stepScroll);
 
         const tl = gsap.timeline({
           defaults: { duration: 1, ease: 'none' },
@@ -81,6 +84,7 @@ export default function PromptBarsStack({ items }) {
           pin: true,
           scrub: 1,
           anticipatePin: 1,
+          pinSpacing: true,
           invalidateOnRefresh: true,
           animation: tl,
         });
