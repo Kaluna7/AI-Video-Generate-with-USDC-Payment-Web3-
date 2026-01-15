@@ -1,6 +1,11 @@
 'use client';
 
+import { useRef, useState } from 'react';
+
 export default function VideoPreviewPanel({ generationStatus, videoUrl, errorMessage, recentGenerations = [] }) {
+  const videoThumbRefs = useRef({});
+  const [playingThumbId, setPlayingThumbId] = useState(null);
+
   const steps = [
     { id: 'waiting', label: 'Waiting', icon: '⏱️' },
     { id: 'confirmed', label: 'Confirmed', icon: '✓' },
@@ -143,6 +148,9 @@ export default function VideoPreviewPanel({ generationStatus, videoUrl, errorMes
                   <video
                     className="absolute inset-0 w-full h-full object-cover"
                     src={gen.videoUrl}
+                    ref={(el) => {
+                      if (el) videoThumbRefs.current[gen.id] = el;
+                    }}
                     muted
                     loop
                     playsInline
@@ -154,6 +162,55 @@ export default function VideoPreviewPanel({ generationStatus, videoUrl, errorMes
 
                 {/* Overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-black/0 opacity-90" />
+
+                {/* Play / Pause */}
+                {gen.videoUrl && (
+                  <button
+                    type="button"
+                    aria-label={playingThumbId === gen.id ? 'Pause preview' : 'Play preview'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const current = videoThumbRefs.current[gen.id];
+                      if (!current) return;
+
+                      // Pause any other playing thumb
+                      if (playingThumbId && playingThumbId !== gen.id) {
+                        const prev = videoThumbRefs.current[playingThumbId];
+                        if (prev && !prev.paused) prev.pause();
+                      }
+
+                      if (playingThumbId === gen.id && !current.paused) {
+                        current.pause();
+                        setPlayingThumbId(null);
+                        return;
+                      }
+
+                      const p = current.play();
+                      if (p && typeof p.then === 'function') {
+                        p.then(() => setPlayingThumbId(gen.id)).catch(() => {
+                          // Autoplay/play can be blocked in some browsers; keep UI stable.
+                          setPlayingThumbId(null);
+                        });
+                      } else {
+                        setPlayingThumbId(gen.id);
+                      }
+                    }}
+                    className="absolute inset-0 flex items-center justify-center"
+                  >
+                    <span className="w-10 h-10 rounded-full bg-black/55 border border-white/15 flex items-center justify-center backdrop-blur-sm group-hover:bg-black/65 transition-colors">
+                      {playingThumbId === gen.id ? (
+                        <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5 text-white ml-0.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <path d="M8 5v14l11-7L8 5z" />
+                        </svg>
+                      )}
+                    </span>
+                  </button>
+                )}
+
                 <div className="absolute left-0 right-0 bottom-0 p-2">
                   <p className="text-[10px] text-gray-200 text-center truncate w-full">{gen.title}</p>
                   <p className="text-[10px] text-gray-400 text-center">{gen.time}</p>
