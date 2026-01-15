@@ -123,8 +123,8 @@ def _gemini_api_key() -> str:
 
 
 def _gemini_model() -> str:
-    # Default to a widely supported "flash" model for generateContent.
-    # Allow override via env.
+    # Allow override via env. (User may use gemini-3-flash / gemini-2.5-flash, etc.)
+    # We keep a conservative default and handle fallbacks + API-version differences in the request layer.
     v = os.getenv("GEMINI_MODEL") or "gemini-1.5-flash"
     return v.strip().strip('"').strip("'")
 
@@ -162,35 +162,52 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
 
     # Google Generative Language API supports API key either via query param or x-goog-api-key header.
     # We'll use header to avoid logging the key in URLs.
-    # Try configured model first; if it's not supported/available, fall back to known flash models.
-    candidates = [_gemini_model(), "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    #
+    # Important: some newer models appear in AI Studio but are not available on v1beta for generateContent.
+    # So we try BOTH API versions (v1beta then v1) and fall back across common flash/pro models.
+    candidates = [
+        _gemini_model(),
+        "gemini-3-flash",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+    ]
+    api_versions = ["v1beta", "v1"]
+
     last_resp = None
     last_model = None
-    for m in candidates:
-        last_model = m
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent"
-        resp = requests.post(
-            url,
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": _gemini_api_key(),
-            },
-            json=payload,
-            timeout=60,
-        )
-        last_resp = resp
-        # Success
-        if resp.status_code < 400:
+    last_ver = None
+
+    for ver in api_versions:
+        for m in candidates:
+            last_model = m
+            last_ver = ver
+            url = f"https://generativelanguage.googleapis.com/{ver}/models/{m}:generateContent"
+            resp = requests.post(
+                url,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": _gemini_api_key(),
+                },
+                json=payload,
+                timeout=60,
+            )
+            last_resp = resp
+            if resp.status_code < 400:
+                break
+            # If model isn't found / doesn't support generateContent on this API version, try next candidate.
+            if resp.status_code == 404 and ("not found" in (resp.text or "").lower() or "not_supported" in (resp.text or "").lower() or "NOT_FOUND" in (resp.text or "")):
+                continue
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gemini error ({resp.status_code}): {resp.text}")
+        if last_resp and last_resp.status_code < 400:
             break
-        # If model not found / not supported, try next. Otherwise stop early.
-        if resp.status_code == 404 and ("is not found" in (resp.text or "") or "NOT_FOUND" in (resp.text or "")):
-            continue
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gemini error ({resp.status_code}): {resp.text}")
 
     if not last_resp or last_resp.status_code >= 400:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Gemini model not supported. Last tried '{last_model}': {last_resp.text if last_resp else ''}",
+            detail=f"Gemini model not supported for generateContent. Last tried '{last_model}' on {last_ver}: {last_resp.text if last_resp else ''}",
         )
 
     data = last_resp.json() if last_resp.content else {}
