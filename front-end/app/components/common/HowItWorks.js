@@ -53,7 +53,7 @@ export default function HowItWorks() {
                       <div className="rounded-xl border border-white/10 bg-black/30 p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="font-semibold bg-gradient-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
+                            <p className="font-semibold bg-linear-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
                               Arc
                             </p>
                             <p className="mt-2 text-sm text-gray-300 leading-relaxed">
@@ -70,12 +70,20 @@ export default function HowItWorks() {
                         >
                           👉 Read more about Arc
                         </a>
+                        <a
+                          href="https://faucet.circle.com"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
+                        >
+                          💧 Testnet faucet (get USDC)
+                        </a>
                       </div>
 
                       <div className="rounded-xl border border-white/10 bg-black/30 p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="font-semibold bg-gradient-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
+                            <p className="font-semibold bg-linear-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
                               Circle
                             </p>
                             <p className="mt-2 text-sm text-gray-300 leading-relaxed">

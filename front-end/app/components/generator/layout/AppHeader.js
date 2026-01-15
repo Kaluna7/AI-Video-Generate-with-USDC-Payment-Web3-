@@ -7,9 +7,9 @@ import { useAuthStore } from '../../../store/authStore';
 export default function AppHeader() {
   const usdcBalance = useAuthStore((state) => state.usdcBalance);
   const walletAddress = useAuthStore((state) => state.walletAddress);
-  const setUsdcBalance = useAuthStore((state) => state.setUsdcBalance);
   const setWalletAddress = useAuthStore((state) => state.setWalletAddress);
   const [isConnecting, setIsConnecting] = useState(false);
+  const ARC_TESTNET_FAUCET_URL = 'https://faucet.circle.com';
 
   const handleConnectWallet = async () => {
     setIsConnecting(true);
@@ -114,6 +114,26 @@ export default function AppHeader() {
                 )}
               </button>
             )}
+
+            {/* Arc Testnet Faucet */}
+            <a
+              href={ARC_TESTNET_FAUCET_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors"
+              title="Get USDC on Arc testnet (faucet)"
+            >
+              <svg className="w-4 h-4 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 16.5a4 4 0 004 4h2a4 4 0 004-4c0-1.657-.895-3-2-4-1.105-1-2-2.343-2-4a4 4 0 00-8 0c0 1.657-.895 3-2 4-1.105 1-2 2.343-2 4z"
+                />
+              </svg>
+              <span className="text-xs text-gray-300 hidden sm:inline">Faucet</span>
+              <span className="text-xs text-gray-300 sm:hidden">USDC</span>
+            </a>
           </div>
         </div>
       </div>
