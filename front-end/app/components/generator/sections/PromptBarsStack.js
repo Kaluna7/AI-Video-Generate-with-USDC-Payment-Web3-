@@ -64,8 +64,11 @@ export default function PromptBarsStack({ items }) {
 
         // Measure list positions and compute how much each card must move to align to
         // a stable "active slot" centered in the viewport.
+        const headerOffset = 96; // matches ScrollTrigger start 'top top+=96'
         const firstRect = cards[0].getBoundingClientRect();
-        const activeSlotTop = Math.round(window.innerHeight * 0.5 - firstRect.height * 0.5);
+        // Center within the usable viewport area (below the fixed header)
+        const usableHeight = Math.max(1, window.innerHeight - headerOffset);
+        const activeSlotTop = Math.round(headerOffset + usableHeight * 0.5 - firstRect.height * 0.5);
         const deltas = cards.map((el) => el.getBoundingClientRect().top - activeSlotTop);
 
         const stackGapY = 88;
