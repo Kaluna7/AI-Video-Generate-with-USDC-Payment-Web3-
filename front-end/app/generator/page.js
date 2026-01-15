@@ -32,7 +32,7 @@ export default function GeneratorPage() {
   const [selectedLength, setSelectedLength] = useState('10s');
   const [resolution, setResolution] = useState('1080p');
   const [frameRate, setFrameRate] = useState('30 FPS');
-  const [aiEnhancement, setAiEnhancement] = useState(true);
+  const [aiEnhancement, setAiEnhancement] = useState(false);
   const [generationStatus, setGenerationStatus] = useState('waiting'); // waiting, confirmed, generating, ready
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [videoJobId, setVideoJobId] = useState(null);
@@ -73,10 +73,9 @@ export default function GeneratorPage() {
   const calculateCost = () => {
     // Veo 3.1 docs: veo3-fast = 25 credits ($0.25), veo3 = 180 credits ($1.80)
     const modelPrice = veoModel === 'veo3' ? 1.8 : 0.25;
-    const stylePrice = 0; // style not used by Veo 3.1 API; keep UI simple
-    const aiPrice = aiEnhancement ? 1.0 : 0;
-    const fee = 0.5;
-    return modelPrice + stylePrice + aiPrice + fee;
+    // Keep hackathon/testnet pricing simple: charge only the model price.
+    // (No extra "AI enhancement" surcharge or platform fee.)
+    return modelPrice;
   };
 
   const handleGenerateClick = () => {
