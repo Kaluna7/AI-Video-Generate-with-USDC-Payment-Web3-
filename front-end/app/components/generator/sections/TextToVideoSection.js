@@ -157,6 +157,80 @@ export default function TextToVideoSection() {
 
       <PromptBarsStack items={promptingBars} />
 
+      {/* How it works */}
+      <div className="mt-16 mb-18">
+        <div className="text-center">
+          <h3 className="text-3xl md:text-4xl font-bold text-white">
+            How to use PrimeStudio
+          </h3>
+          <p className="mt-3 text-gray-400">
+            Generate studio-ready videos in a simple, repeatable workflow.
+          </p>
+        </div>
+
+        <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="rounded-2xl border border-white/10 bg-[#06080c]/90 p-5">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300 font-bold">
+                1
+              </div>
+              <p className="text-white font-semibold">Enter a text prompt</p>
+            </div>
+            <p className="mt-3 text-sm text-gray-300 leading-relaxed">
+              Describe your scene, style, and motion. Paste a script or a few keywords—PrimeStudio turns it into a clean prompt-ready input.
+            </p>
+            <div className="mt-4 text-xs text-gray-400">
+              Tip: Add camera moves, lighting, and mood for better results.
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-[#06080c]/90 p-5">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center text-orange-300 font-bold">
+                2
+              </div>
+              <p className="text-white font-semibold">Choose Veo settings</p>
+            </div>
+            <p className="mt-3 text-sm text-gray-300 leading-relaxed">
+              Pick your model, aspect ratio (16:9 / 9:16), and watermark preference—optimized for Shorts, Reels, TikTok, or widescreen.
+            </p>
+            <div className="mt-4 text-xs text-gray-400">
+              Recommended: 9:16 for social, 16:9 for YouTube.
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-[#06080c]/90 p-5">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-300 font-bold">
+                3
+              </div>
+              <p className="text-white font-semibold">Generate & preview</p>
+            </div>
+            <p className="mt-3 text-sm text-gray-300 leading-relaxed">
+              Start generation and watch the status update in real time. Preview the output, then iterate quickly by tweaking your prompt.
+            </p>
+            <div className="mt-4 text-xs text-gray-400">
+              Faster iterations = better creative direction.
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-[#06080c]/90 p-5">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-300 font-bold">
+                4
+              </div>
+              <p className="text-white font-semibold">Save, download, share</p>
+            </div>
+            <p className="mt-3 text-sm text-gray-300 leading-relaxed">
+              Your successful generations are saved automatically to <span className="text-white font-semibold">Recent Generations</span> and <span className="text-white font-semibold">My Videos</span> so you can reuse or download anytime.
+            </p>
+            <div className="mt-4 text-xs text-gray-400">
+              Build a library of reusable styles and prompts.
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Reviews header */}
       <div className="mt-20 mb-10 text-center">
         <h3 className="text-3xl md:text-4xl font-bold text-white">
