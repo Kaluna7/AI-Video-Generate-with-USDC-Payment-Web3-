@@ -136,12 +136,28 @@ export default function VideoPreviewPanel({ generationStatus, videoUrl, errorMes
             {recentGenerations.slice(0, 3).map((gen) => (
               <div
                 key={gen.id}
-                className="aspect-square bg-gradient-to-br from-purple-500/10 to-blue-500/10 rounded-lg border border-gray-700 flex flex-col items-center justify-center p-2 hover:border-purple-500/50 transition-colors cursor-pointer group"
+                className="aspect-square bg-gradient-to-br from-purple-500/10 to-blue-500/10 rounded-lg border border-gray-700 hover:border-purple-500/50 transition-colors cursor-pointer group relative overflow-hidden"
                 title={gen.prompt}
               >
-                <div className="w-full h-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded mb-1.5 group-hover:from-purple-500/30 group-hover:to-blue-500/30 transition-colors"></div>
-                <p className="text-[10px] text-gray-400 text-center truncate w-full">{gen.title}</p>
-                <p className="text-[10px] text-gray-600">{gen.time}</p>
+                {gen.videoUrl ? (
+                  <video
+                    className="absolute inset-0 w-full h-full object-cover"
+                    src={gen.videoUrl}
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-blue-500/20 group-hover:from-purple-500/30 group-hover:to-blue-500/30 transition-colors" />
+                )}
+
+                {/* Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-black/0 opacity-90" />
+                <div className="absolute left-0 right-0 bottom-0 p-2">
+                  <p className="text-[10px] text-gray-200 text-center truncate w-full">{gen.title}</p>
+                  <p className="text-[10px] text-gray-400 text-center">{gen.time}</p>
+                </div>
               </div>
             ))}
           </div>
