@@ -5,12 +5,21 @@ import { createPortal } from 'react-dom';
 
 export default function EnhanceAIModal({ isOpen, onClose, onGenerate }) {
   const [idea, setIdea] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleGenerate = () => {
-    if (idea.trim()) {
-      onGenerate(idea.trim());
+  const handleGenerate = async () => {
+    const v = idea.trim();
+    if (!v) return;
+    setError('');
+    setIsLoading(true);
+    try {
+      await onGenerate(v);
       setIdea('');
-      onClose();
+    } catch (e) {
+      setError(e?.message || 'Failed to generate prompt');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -56,28 +65,32 @@ export default function EnhanceAIModal({ isOpen, onClose, onGenerate }) {
               onChange={(e) => setIdea(e.target.value)}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none"
               rows={4}
-              placeholder="e.g., Add dramatic lighting, cinematic camera movement, slow motion effect..."
+              placeholder="e.g., A cyberpunk street chase with neon rain, handheld camera, fast pacing..."
               maxLength={200}
             />
             <div className="flex items-center justify-between mt-2">
               <span className="text-xs text-gray-500">{idea.length}/200 characters</span>
             </div>
+            {error && (
+              <p className="mt-2 text-xs text-red-400">{error}</p>
+            )}
           </div>
 
           {/* Buttons */}
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 py-3 px-4 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-600 transition-colors"
+              disabled={isLoading}
+              className="flex-1 py-3 px-4 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
               onClick={handleGenerate}
-              disabled={!idea.trim()}
+              disabled={!idea.trim() || isLoading}
               className="flex-1 py-3 px-4 gradient-purple-blue text-white rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Generate
+              {isLoading ? 'Generating…' : 'Generate'}
             </button>
           </div>
         </div>

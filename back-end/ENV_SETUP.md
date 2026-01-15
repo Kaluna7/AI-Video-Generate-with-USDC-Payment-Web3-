@@ -16,6 +16,12 @@ CIRCLE_API_KEY=PASTE_YOUR_TEST_API_KEY_HERE
 # Optional (only needed if you use Circle Wallets SDK on the frontend):
 CIRCLE_CLIENT_KEY=PASTE_YOUR_CLIENT_KEY_HERE
 
+# Gemini (Enhance with AI)
+# Put your Google AI Studio / Gemini API key here (server-side only).
+GEMINI_API_KEY=PASTE_YOUR_GEMINI_API_KEY_HERE
+# Model name (user requested gemini-3-flash)
+GEMINI_MODEL=gemini-3-flash
+
 # Google OAuth (Sign in with Google)
 # Create these in Google Cloud Console (OAuth client: Web application)
 GOOGLE_CLIENT_ID=PASTE_YOUR_CLIENT_ID_HERE

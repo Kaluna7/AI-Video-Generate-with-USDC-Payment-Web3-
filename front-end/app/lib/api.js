@@ -119,6 +119,25 @@ export const resetPassword = async (data) => {
 };
 
 // ==============================
+// AI prompt enhancement (Gemini)
+// ==============================
+
+export const enhancePrompt = async ({ idea, existing_prompt }) => {
+  const response = await fetch(`${API_BASE_URL}/ai/enhance-prompt`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({
+      idea,
+      existing_prompt: existing_prompt || null,
+    }),
+  });
+  return await handleResponse(response);
+};
+
+// ==============================
 // Video generation (Text to Video)
 // ==============================
 

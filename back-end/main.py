@@ -109,6 +109,88 @@ def verify_reset_token(token: str) -> str:
 
 
 # ==============================
+# Gemini (prompt enhancement) helpers
+# ==============================
+
+
+def _gemini_api_key() -> str:
+    v = os.getenv("GEMINI_API_KEY")
+    if v:
+        v = v.strip().strip('"').strip("'")
+    if not v:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="GEMINI_API_KEY is not set")
+    return v
+
+
+def _gemini_model() -> str:
+    # User requested gemini-3-flash. Allow override via env.
+    v = os.getenv("GEMINI_MODEL") or "gemini-3-flash"
+    return v.strip().strip('"').strip("'")
+
+
+def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) -> str:
+    """
+    Call Gemini via Google Generative Language API (API key auth) to expand a short idea into a full Veo-ready prompt.
+    """
+    idea = (idea or "").strip()
+    if not idea:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Idea is required")
+
+    base = (existing_prompt or "").strip()
+
+    system = (
+        "You are an expert video prompt writer for text-to-video generation.\n"
+        "Write ONE final prompt only (no lists, no headings, no quotes).\n"
+        "Make it cinematic and specific: subject, setting, actions, camera, lighting, mood, and pacing.\n"
+        "Avoid mentioning brands or copyrighted characters.\n"
+        "Keep it under 450 characters.\n"
+    )
+    user = f"Short idea: {idea}"
+    if base:
+        user += f"\nExisting prompt (optional context): {base}"
+
+    payload = {
+        "contents": [
+            {"role": "user", "parts": [{"text": system + "\n" + user}]},
+        ],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 256,
+        },
+    }
+
+    # Google Generative Language API supports API key either via query param or x-goog-api-key header.
+    # We'll use header to avoid logging the key in URLs.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{_gemini_model()}:generateContent"
+    resp = requests.post(
+        url,
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": _gemini_api_key(),
+        },
+        json=payload,
+        timeout=60,
+    )
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gemini error ({resp.status_code}): {resp.text}")
+
+    data = resp.json() if resp.content else {}
+    try:
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gemini response missing text: {data}")
+
+    out = (text or "").strip()
+    # Safety: enforce length and single-line-ish output.
+    out = " ".join(out.split())
+    if len(out) > 500:
+        out = out[:500].rstrip()
+    if not out:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Gemini returned empty prompt")
+    return out
+
+
+# ==============================
 # Google OAuth helpers
 # ==============================
 
@@ -680,6 +762,27 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     db.commit()
 
     return {"message": "Password has been reset successfully."}
+
+
+# ==============================
+# AI endpoints (Gemini)
+# ==============================
+
+
+class EnhancePromptRequest(BaseModel):
+    idea: str
+    existing_prompt: Optional[str] = None
+
+
+class EnhancePromptResponse(BaseModel):
+    prompt: str
+    model: str
+
+
+@app.post("/ai/enhance-prompt", response_model=EnhancePromptResponse)
+def enhance_prompt(body: EnhancePromptRequest, current_user: User = Depends(get_current_user)):
+    prompt = _gemini_generate_prompt(body.idea, existing_prompt=body.existing_prompt)
+    return {"prompt": prompt, "model": _gemini_model()}
 
 
 # ==============================

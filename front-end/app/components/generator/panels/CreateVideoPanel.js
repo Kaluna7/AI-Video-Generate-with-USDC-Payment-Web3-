@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import EnhanceAIModal from '../modals/EnhanceAIModal';
+import { enhancePrompt } from '../../../lib/api';
 
 export default function CreateVideoPanel({
   title = 'Create Video',
@@ -26,11 +27,16 @@ export default function CreateVideoPanel({
   onGenerate,
 }) {
   const [isEnhanceModalOpen, setIsEnhanceModalOpen] = useState(false);
+  const [enhanceError, setEnhanceError] = useState('');
 
-  const handleEnhanceGenerate = (idea) => {
-    // Simulate AI enhancement - append idea to existing prompt
-    const enhancedPrompt = `${prompt}\n\nEnhancement: ${idea}`;
-    setPrompt(enhancedPrompt);
+  const handleEnhanceGenerate = async (idea) => {
+    setEnhanceError('');
+    const result = await enhancePrompt({ idea, existing_prompt: prompt });
+    if (result?.prompt) {
+      setPrompt(result.prompt);
+    } else {
+      throw new Error('AI did not return a prompt');
+    }
   };
   const veoModels = [
     { value: 'veo3-fast', label: 'veo3-fast', price: 0.25 },
@@ -67,6 +73,9 @@ export default function CreateVideoPanel({
                   Enhance with AI
                 </button>
               </div>
+              {enhanceError && (
+                <p className="mt-2 text-xs text-red-400">{enhanceError}</p>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -98,6 +107,9 @@ export default function CreateVideoPanel({
                     Enhance with AI
                   </button>
                 </div>
+                {enhanceError && (
+                  <p className="mt-2 text-xs text-red-400">{enhanceError}</p>
+                )}
               </div>
             </div>
           )}
@@ -166,7 +178,15 @@ export default function CreateVideoPanel({
       <EnhanceAIModal
         isOpen={isEnhanceModalOpen}
         onClose={() => setIsEnhanceModalOpen(false)}
-        onGenerate={handleEnhanceGenerate}
+        onGenerate={async (idea) => {
+          try {
+            await handleEnhanceGenerate(idea);
+            setIsEnhanceModalOpen(false);
+          } catch (e) {
+            setEnhanceError(e.message || 'Failed to enhance prompt');
+            throw e;
+          }
+        }}
       />
     </div>
   );
