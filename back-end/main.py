@@ -4,9 +4,10 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from uuid import uuid4
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import Column, Integer, String, DateTime, create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -14,6 +15,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 import requests
+from urllib.parse import urlencode
 
 try:
     from dotenv import load_dotenv
@@ -104,6 +106,88 @@ def verify_reset_token(token: str) -> str:
         return email
     except JWTError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
+
+
+# ==============================
+# Google OAuth helpers
+# ==============================
+
+
+def _google_client_id() -> str:
+    v = os.getenv("GOOGLE_CLIENT_ID")
+    if v:
+        v = v.strip().strip('"').strip("'")
+    if not v:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="GOOGLE_CLIENT_ID is not set")
+    return v
+
+
+def _google_client_secret() -> str:
+    v = os.getenv("GOOGLE_CLIENT_SECRET")
+    if v:
+        v = v.strip().strip('"').strip("'")
+    if not v:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="GOOGLE_CLIENT_SECRET is not set")
+    return v
+
+
+def _google_redirect_uri() -> str:
+    # Must match the "Authorized redirect URI" in Google Cloud Console
+    v = os.getenv("GOOGLE_REDIRECT_URI") or "http://localhost:8001/auth/google/callback"
+    return v.strip().strip('"').strip("'")
+
+
+def _frontend_url() -> str:
+    v = os.getenv("FRONTEND_URL") or "http://localhost:3000"
+    return v.strip().strip('"').strip("'").rstrip("/")
+
+
+def _create_oauth_state(redirect_to: str) -> str:
+    """
+    Signed state token to prevent CSRF and carry redirect target.
+    """
+    expire = datetime.utcnow() + timedelta(minutes=10)
+    payload = {"type": "oauth_state", "redirect_to": redirect_to, "nonce": str(uuid4()), "exp": expire}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def _verify_oauth_state(state: str) -> dict:
+    try:
+        payload = jwt.decode(state, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "oauth_state":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid oauth state")
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired oauth state")
+
+
+def _google_exchange_code_for_token(code: str) -> dict:
+    # OAuth code exchange (server-side)
+    resp = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": code,
+            "client_id": _google_client_id(),
+            "client_secret": _google_client_secret(),
+            "redirect_uri": _google_redirect_uri(),
+            "grant_type": "authorization_code",
+        },
+        timeout=30,
+    )
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Google token exchange failed: {resp.text}")
+    return resp.json()
+
+
+def _google_get_userinfo(access_token: str) -> dict:
+    resp = requests.get(
+        "https://openidconnect.googleapis.com/v1/userinfo",
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=30,
+    )
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Google userinfo failed: {resp.text}")
+    return resp.json()
 
 
 # ==============================
@@ -480,6 +564,83 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
     access_token = create_access_token(data={"sub": str(user.id)})
     return {"access_token": access_token, "token_type": "bearer", "user": user}
+
+
+@app.get("/auth/me", response_model=UserOut)
+def me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@app.get("/auth/google/login")
+def google_login(request: Request, redirect_to: Optional[str] = None):
+    """
+    Start Google OAuth by redirecting the user to Google's consent screen.
+    """
+    target = redirect_to or f"{_frontend_url()}/auth/google"
+    state = _create_oauth_state(target)
+
+    params = {
+        "client_id": _google_client_id(),
+        "redirect_uri": _google_redirect_uri(),
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "prompt": "select_account",
+        "state": state,
+    }
+    url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+    return RedirectResponse(url=url, status_code=302)
+
+
+@app.get("/auth/google/callback")
+def google_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, db: Session = Depends(get_db)):
+    """
+    Handle Google OAuth callback, upsert user, issue JWT, then redirect back to frontend.
+    """
+    # If user cancels or Google returns an error
+    if error:
+        target = f"{_frontend_url()}/auth/google?error={error}"
+        return RedirectResponse(url=target, status_code=302)
+
+    if not code or not state:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing code/state")
+
+    st = _verify_oauth_state(state)
+    redirect_to = st.get("redirect_to") or f"{_frontend_url()}/auth/google"
+
+    token_data = _google_exchange_code_for_token(code)
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Google token missing access_token: {token_data}")
+
+    info = _google_get_userinfo(access_token)
+    email = info.get("email")
+    full_name = info.get("name") or info.get("given_name")
+    if not email:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Google userinfo missing email: {info}")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # Create user with a random password (so schema stays consistent).
+        # If you want to allow password login later, user can use reset-password.
+        random_pw = str(uuid4())
+        user = User(email=email, full_name=full_name, hashed_password=hash_password(random_pw))
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        # Keep name in sync if it was empty
+        if full_name and not user.full_name:
+            user.full_name = full_name
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+    jwt_token = create_access_token(data={"sub": str(user.id)})
+
+    # Send token to frontend callback page (hackathon-friendly)
+    sep = "&" if "?" in redirect_to else "?"
+    return RedirectResponse(url=f"{redirect_to}{sep}token={jwt_token}", status_code=302)
 
 
 @app.post("/auth/forgot-password")

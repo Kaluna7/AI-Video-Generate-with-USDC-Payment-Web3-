@@ -7,6 +7,15 @@ Create `back-end/.env` (do **not** commit it) and add:
 DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/DBNAME
 JWT_SECRET_KEY=CHANGE_ME_TO_A_RANDOM_SECRET
 
+# Google OAuth (Sign in with Google)
+# Create these in Google Cloud Console (OAuth client: Web application)
+GOOGLE_CLIENT_ID=PASTE_YOUR_CLIENT_ID_HERE
+GOOGLE_CLIENT_SECRET=PASTE_YOUR_CLIENT_SECRET_HERE
+# Must be added as an Authorized redirect URI in Google console:
+GOOGLE_REDIRECT_URI=http://localhost:8001/auth/google/callback
+# Where backend should send the user after success/failure:
+FRONTEND_URL=http://localhost:3000
+
 # Video generation
 # Use `mock` first to verify wiring works, then switch to `replicate`.
 VIDEO_PROVIDER=mock
