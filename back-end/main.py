@@ -283,6 +283,102 @@ def _replicate_get_prediction(prediction_id: str) -> Dict[str, Any]:
     return resp.json()
 
 
+def _veo3_base_url() -> str:
+    """
+    Veo3 provider base URL.
+    Default is a common gateway style (can be overridden via env).
+    """
+    base = os.getenv("VEO3_BASE_URL") or "https://api.veo3gen.co/api/veo"
+    return base.strip().rstrip("/")
+
+
+def _veo3_headers() -> Dict[str, str]:
+    key = os.getenv("VEO3_API_KEY")
+    if key:
+        key = key.strip().strip('"').strip("'")
+    if not key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="VEO3_API_KEY is not set in environment",
+        )
+    # Most Veo3 gateways use X-API-Key; if yours differs, set VEO3_AUTH_HEADER_NAME
+    header_name = (os.getenv("VEO3_AUTH_HEADER_NAME") or "X-API-Key").strip()
+    return {
+        header_name: key,
+        "Content-Type": "application/json",
+    }
+
+
+def _veo3_create_task(prompt: str, duration_seconds: int) -> Dict[str, Any]:
+    """
+    Create a Veo3 text-to-video task.
+    Env customization:
+    - VEO3_BASE_URL
+    - VEO3_API_KEY
+    - VEO3_AUTH_HEADER_NAME (default: X-API-Key)
+    - VEO3_MODEL (optional)
+    - VEO3_ASPECT_RATIO (optional, e.g. 16:9)
+    - VEO3_GENERATE_AUDIO (optional, true/false)
+    """
+    payload: Dict[str, Any] = {
+        "prompt": prompt,
+        "durationSeconds": int(duration_seconds),
+    }
+
+    model = os.getenv("VEO3_MODEL")
+    if model and model.strip():
+        payload["model"] = model.strip()
+
+    aspect = os.getenv("VEO3_ASPECT_RATIO")
+    if aspect and aspect.strip():
+        payload["aspectRatio"] = aspect.strip()
+
+    gen_audio = os.getenv("VEO3_GENERATE_AUDIO")
+    if gen_audio is not None and gen_audio.strip() != "":
+        payload["generateAudio"] = gen_audio.strip().lower() in ("1", "true", "yes", "y", "on")
+
+    resp = requests.post(
+        f"{_veo3_base_url()}/text-to-video",
+        headers=_veo3_headers(),
+        json=payload,
+        timeout=60,
+    )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Veo3 provider error ({resp.status_code}): {resp.text}",
+        )
+    return resp.json()
+
+
+def _veo3_get_status(task_id: str) -> Dict[str, Any]:
+    resp = requests.get(
+        f"{_veo3_base_url()}/status/{task_id}",
+        headers=_veo3_headers(),
+        timeout=30,
+    )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Veo3 provider error ({resp.status_code}): {resp.text}",
+        )
+    return resp.json()
+
+
+def _veo3_get_download(task_id: str) -> Dict[str, Any]:
+    resp = requests.get(
+        f"{_veo3_base_url()}/download/{task_id}",
+        headers=_veo3_headers(),
+        timeout=60,
+    )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Veo3 provider error ({resp.status_code}): {resp.text}",
+        )
+    return resp.json()
+
+
 # ==============================
 # FastAPI app & middleware
 # ==============================
@@ -444,10 +540,31 @@ def create_text_to_video_job(
         elif job["status"] in ("starting", "processing", "queued"):
             job["status"] = "processing"
 
+    elif provider == "veo3":
+        task = _veo3_create_task(body.prompt.strip(), int(body.duration_seconds or 5))
+        # Try common task id fields
+        task_id = task.get("taskId") or task.get("task_id") or task.get("id")
+        if not task_id:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Veo3 provider response missing task id: {task}",
+            )
+        job["provider_task_id"] = str(task_id)
+        status_raw = (task.get("status") or "processing").lower()
+        if status_raw in ("queued", "pending", "starting", "processing", "running"):
+            job["status"] = "processing"
+        elif status_raw in ("completed", "succeeded", "success", "done"):
+            job["status"] = "succeeded"
+        elif status_raw in ("failed", "error"):
+            job["status"] = "failed"
+            job["error"] = task.get("error") or "Provider failed"
+        else:
+            job["status"] = "processing"
+
     else:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unsupported VIDEO_PROVIDER '{provider}'. Use 'mock' or 'replicate'.",
+            detail=f"Unsupported VIDEO_PROVIDER '{provider}'. Use 'mock', 'replicate', or 'veo3'.",
         )
 
     VIDEO_JOBS[job_id] = job
@@ -490,6 +607,40 @@ def get_video_job(
             elif status_raw == "failed":
                 job["status"] = "failed"
                 job["error"] = (pred.get("error") or "Provider failed").strip() if pred.get("error") else "Provider failed"
+
+            VIDEO_JOBS[job_id] = job
+
+    if provider == "veo3" and job.get("status") in ("queued", "processing"):
+        task_id = job.get("provider_task_id")
+        if task_id:
+            st = _veo3_get_status(str(task_id))
+            status_raw = (st.get("status") or "processing").lower()
+            if status_raw in ("queued", "pending", "starting", "processing", "running"):
+                job["status"] = "processing"
+            elif status_raw in ("failed", "error"):
+                job["status"] = "failed"
+                job["error"] = st.get("error") or "Provider failed"
+            elif status_raw in ("completed", "succeeded", "success", "done"):
+                # fetch download url
+                dl = _veo3_get_download(str(task_id))
+                video_url = None
+                if isinstance(dl, dict):
+                    if isinstance(dl.get("url"), str):
+                        video_url = dl.get("url")
+                    elif isinstance(dl.get("videoUrl"), str):
+                        video_url = dl.get("videoUrl")
+                    elif isinstance(dl.get("videos"), list) and dl["videos"]:
+                        first = dl["videos"][0]
+                        if isinstance(first, dict) and isinstance(first.get("url"), str):
+                            video_url = first.get("url")
+                        elif isinstance(first, str):
+                            video_url = first
+                job["video_url"] = video_url
+                job["status"] = "succeeded" if video_url else "failed"
+                if not video_url:
+                    job["error"] = "Veo3 completed but no video URL returned"
+            else:
+                job["status"] = "processing"
 
             VIDEO_JOBS[job_id] = job
 
