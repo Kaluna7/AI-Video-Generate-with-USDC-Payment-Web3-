@@ -17,6 +17,7 @@ export default function TextToVideoSection() {
       headline: 'Accurately Convert Text to Video in Seconds',
       description: 'Enter a text prompt—whether it\'s a detailed description, a full script, or just a few keywords—PrimeStudio AI analyzes your input, understands your tone, and transforms it into the stunning video content you envisioned.',
       prompt: 'CG style, a stunning anime style character with vibrant colors',
+      videoSrc: '/assets/video/city.mp4',
       videoTitle: 'Futuristic Cityscape',
       videoDuration: '10s',
       videoFormat: 'MP4',
