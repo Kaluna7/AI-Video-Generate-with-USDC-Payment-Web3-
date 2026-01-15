@@ -127,7 +127,7 @@ const getAuthHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-export const createTextToVideoJob = async ({ prompt, duration_seconds, resolution, fps, style }) => {
+export const createTextToVideoJob = async ({ prompt, model, aspect_ratio, watermark }) => {
   const response = await fetch(`${API_BASE_URL}/video/text-to-video`, {
     method: 'POST',
     headers: {
@@ -136,10 +136,9 @@ export const createTextToVideoJob = async ({ prompt, duration_seconds, resolutio
     },
     body: JSON.stringify({
       prompt,
-      duration_seconds,
-      resolution,
-      fps,
-      style,
+      model,
+      aspect_ratio,
+      watermark,
     }),
   });
   return await handleResponse(response);

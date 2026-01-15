@@ -21,6 +21,12 @@ export default function GeneratorPage() {
   const [activeTab, setActiveTab] = useState('text');
   const [prompt, setPrompt] = useState('A cinematic drone shot flying over a futuristic city at sunset with neon lights...');
   const [selectedStyle, setSelectedStyle] = useState('Cinematic');
+  // Veo 3.1 params
+  const [veoModel, setVeoModel] = useState('veo3-fast'); // veo3-fast | veo3
+  const [veoAspectRatio, setVeoAspectRatio] = useState('16:9'); // 16:9 | 9:16 | Auto
+  const [veoWatermark, setVeoWatermark] = useState('veo'); // string or null
+
+  // Legacy UI state (kept so existing components don't break if referenced elsewhere)
   const [selectedLength, setSelectedLength] = useState('10s');
   const [resolution, setResolution] = useState('1080p');
   const [frameRate, setFrameRate] = useState('30 FPS');
@@ -42,11 +48,12 @@ export default function GeneratorPage() {
 
   // Calculate generation cost
   const calculateCost = () => {
-    const lengthPrice = selectedLength === '5s' ? 2.5 : selectedLength === '10s' ? 4.5 : 12;
-    const stylePrice = 0.5;
+    // Veo 3.1 docs: veo3-fast = 25 credits ($0.25), veo3 = 180 credits ($1.80)
+    const modelPrice = veoModel === 'veo3' ? 1.8 : 0.25;
+    const stylePrice = 0; // style not used by Veo 3.1 API; keep UI simple
     const aiPrice = aiEnhancement ? 1.0 : 0;
     const fee = 0.5;
-    return lengthPrice + stylePrice + aiPrice + fee;
+    return modelPrice + stylePrice + aiPrice + fee;
   };
 
   const handleGenerateClick = () => {
@@ -84,10 +91,9 @@ export default function GeneratorPage() {
       try {
         const job = await createTextToVideoJob({
           prompt,
-          duration_seconds: selectedLength === '5s' ? 5 : selectedLength === '10s' ? 10 : 30,
-          resolution,
-          fps: parseInt((frameRate || '30').toString(), 10) || 30,
-          style: selectedStyle,
+          model: veoModel,
+          aspect_ratio: veoAspectRatio,
+          watermark: veoWatermark,
         });
         setVideoJobId(job.job_id);
         if (job.status === 'succeeded' && job.video_url) {
@@ -212,6 +218,12 @@ export default function GeneratorPage() {
                     setResolution={setResolution}
                     frameRate={frameRate}
                     setFrameRate={setFrameRate}
+                    veoModel={veoModel}
+                    setVeoModel={setVeoModel}
+                    veoAspectRatio={veoAspectRatio}
+                    setVeoAspectRatio={setVeoAspectRatio}
+                    veoWatermark={veoWatermark}
+                    setVeoWatermark={setVeoWatermark}
                     aiEnhancement={aiEnhancement}
                     setAiEnhancement={setAiEnhancement}
                     onGenerate={handleGenerateClick}

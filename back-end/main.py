@@ -169,9 +169,15 @@ class ResetPasswordRequest(BaseModel):
 
 class TextToVideoRequest(BaseModel):
     prompt: str
-    duration_seconds: Optional[int] = 5
-    resolution: Optional[str] = "1080p"
-    fps: Optional[int] = 30
+    # Veo 3.1 API params
+    model: Optional[str] = "veo3-fast"  # veo3 | veo3-fast
+    aspect_ratio: Optional[str] = "16:9"  # 16:9 | 9:16 | Auto
+    watermark: Optional[str] = "veo"  # string or null
+
+    # Back-compat for older UI fields (ignored by Veo 3.1 provider)
+    duration_seconds: Optional[int] = None
+    resolution: Optional[str] = None
+    fps: Optional[int] = None
     style: Optional[str] = None
 
 
@@ -319,7 +325,7 @@ def _veo3_headers() -> Dict[str, str]:
     return headers
 
 
-def _veo3_create_task(prompt: str, duration_seconds: int) -> Dict[str, Any]:
+def _veo3_create_task(prompt: str, model: str, aspect_ratio: Optional[str], watermark: Optional[str]) -> Dict[str, Any]:
     """
     Create a Veo3 text-to-video task.
     Env customization:
@@ -330,20 +336,19 @@ def _veo3_create_task(prompt: str, duration_seconds: int) -> Dict[str, Any]:
     - VEO3_ASPECT_RATIO (optional, e.g. 16:9)
     - VEO3_WATERMARK (optional, set to "null" string to send JSON null)
     """
-    # Veo 3.1: POST /generate
-    payload: Dict[str, Any] = {"prompt": prompt}
+    payload: Dict[str, Any] = {"prompt": prompt, "model": model}
 
-    model = os.getenv("VEO3_MODEL")
-    payload["model"] = (model.strip() if model and model.strip() else "veo3-fast")
+    if aspect_ratio and aspect_ratio.strip():
+        payload["aspect_ratio"] = aspect_ratio.strip()
 
-    aspect = os.getenv("VEO3_ASPECT_RATIO")
-    if aspect and aspect.strip():
-        payload["aspect_ratio"] = aspect.strip()
-
-    watermark = os.getenv("VEO3_WATERMARK")
-    if watermark is not None and watermark.strip() != "":
-        wm = watermark.strip()
-        payload["watermark"] = None if wm.lower() == "null" else wm
+    # If watermark is passed as "null" string, translate to JSON null
+    if watermark is not None:
+        if isinstance(watermark, str):
+            wm = watermark.strip()
+            if wm != "":
+                payload["watermark"] = None if wm.lower() == "null" else wm
+        else:
+            payload["watermark"] = watermark
 
     resp = requests.post(
         f"{_veo3_base_url()}/generate",
@@ -565,7 +570,12 @@ def create_text_to_video_job(
             job["status"] = "processing"
 
     elif provider == "veo3":
-        task = _veo3_create_task(body.prompt.strip(), int(body.duration_seconds or 5))
+        task = _veo3_create_task(
+            body.prompt.strip(),
+            model=(body.model or "veo3-fast"),
+            aspect_ratio=body.aspect_ratio,
+            watermark=body.watermark,
+        )
         # Veo 3.1 docs: { code, message, data: { task_id } }
         data = task.get("data") if isinstance(task, dict) else None
         task_id = None

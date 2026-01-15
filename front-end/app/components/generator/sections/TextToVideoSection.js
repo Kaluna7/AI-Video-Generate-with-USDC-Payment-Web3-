@@ -49,6 +49,11 @@ export default function TextToVideoSection() {
           <span className="text-purple-400">From Idea to Impact — </span>
           <span className="text-orange-400">AI Video Generation Without Limits</span>
         </h2>
+        <p className="text-sm text-gray-400 mt-3">
+          Veo 3.1 inputs: <span className="text-gray-300">prompt</span>, <span className="text-gray-300">model</span> (veo3 / veo3-fast),
+          <span className="text-gray-300"> aspect_ratio</span> (16:9 / 9:16 / Auto), <span className="text-gray-300">watermark</span>.
+          Duration (seconds) is not a selectable parameter in Veo 3.1.
+        </p>
       </div>
 
       <PromptBarsStack items={promptingBars} />
