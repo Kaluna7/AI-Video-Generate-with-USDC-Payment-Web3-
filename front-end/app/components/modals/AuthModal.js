@@ -5,9 +5,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '../store/authStore';
-import { loginSchema, registerSchema } from '../lib/validations';
-import { registerUser, loginUser } from '../lib/api';
+import { useAuthStore } from '../../store/authStore';
+import { loginSchema, registerSchema } from '../../lib/validations';
+import { registerUser, loginUser } from '../../lib/api';
 
 export default function AuthModal() {
   const router = useRouter();

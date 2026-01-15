@@ -1,6 +1,6 @@
 'use client';
 
-import { useAuthStore } from '../store/authStore';
+import { useAuthStore } from '../../store/authStore';
 
 export default function Header() {
   const openAuthModal = useAuthStore((state) => state.openAuthModal);

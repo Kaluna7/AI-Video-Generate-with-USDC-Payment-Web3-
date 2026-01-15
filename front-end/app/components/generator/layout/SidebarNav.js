@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '../../store/authStore';
+import { useAuthStore } from '../../../store/authStore';
 
 export default function SidebarNav({ currentView, onNavigateToHome, onNavigateToInspiration, onNavigateToMyVideos, onNavigateToText, onNavigateToImage }) {
   const user = useAuthStore((state) => state.user);

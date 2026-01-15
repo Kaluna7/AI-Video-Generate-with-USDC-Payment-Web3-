@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useAuthStore } from '../../store/authStore';
+import { useAuthStore } from '../../../store/authStore';
 
 export default function AppHeader() {
   const usdcBalance = useAuthStore((state) => state.usdcBalance);
