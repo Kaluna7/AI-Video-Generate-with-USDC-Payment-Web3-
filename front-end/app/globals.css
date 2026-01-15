@@ -136,7 +136,12 @@ html {
   display: flex;
   width: max-content;
   gap: 1.25rem;
-  animation: ps-marquee 22s linear infinite;
+  animation-name: ps-marquee;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-duration: var(--ps-marquee-duration, 22s);
+  animation-direction: var(--ps-marquee-direction, normal);
+  will-change: transform;
 }
 
 .ps-marquee:hover .ps-marquee__track {

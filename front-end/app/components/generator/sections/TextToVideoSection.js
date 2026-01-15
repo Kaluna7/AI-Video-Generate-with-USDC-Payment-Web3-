@@ -44,6 +44,68 @@ export default function TextToVideoSection() {
     },
   ];
 
+  const reviews = [
+    {
+      name: 'Alya S.',
+      role: 'Content Creator',
+      text: 'Hemat waktu banget. Dari prompt ke video jadi cepat dan hasilnya kelihatan premium.',
+    },
+    {
+      name: 'Rizky P.',
+      role: 'TikTok Editor',
+      text: 'Preview-nya bikin workflow makin enak. Tinggal iterasi prompt, beres.',
+    },
+    {
+      name: 'Nadia K.',
+      role: 'Brand Designer',
+      text: 'Stylenya konsisten. Cocok buat campaign yang butuh output cepat tapi tetap rapi.',
+    },
+    {
+      name: 'Kevin M.',
+      role: 'YouTube Shorts',
+      text: 'Beneran ngebantu bikin banyak variasi video tanpa ribet timeline.',
+    },
+    {
+      name: 'Salsa R.',
+      role: 'Freelance Marketer',
+      text: 'Simple UI, hasilnya mantap. Klienku suka karena cepat buat testing konsep.',
+    },
+    {
+      name: 'Dimas H.',
+      role: 'UGC Creator',
+      text: 'Sekali coba langsung ketagihan. Output-nya siap posting.',
+    },
+  ];
+
+  const Stars = ({ count = 5 }) => (
+    <div className="flex items-center gap-1" aria-label={`${count} out of 5 stars`}>
+      {Array.from({ length: count }).map((_, i) => (
+        <svg
+          key={i}
+          className="w-4 h-4 text-yellow-400"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.539 1.118l-2.8-2.034a1 1 0 00-1.176 0l-2.8 2.034c-.783.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.43 8.81c-.783-.57-.38-1.81.588-1.81H6.48a1 1 0 00.95-.69l1.07-3.292z" />
+        </svg>
+      ))}
+    </div>
+  );
+
+  const ReviewCard = ({ r }) => (
+    <div className="w-[320px] sm:w-[360px] shrink-0 rounded-2xl border border-white/10 bg-[#06080c]/90 px-5 py-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-white">{r.name}</p>
+          <p className="text-xs text-gray-400">{r.role}</p>
+        </div>
+        <Stars />
+      </div>
+      <p className="mt-3 text-sm text-gray-300 leading-relaxed">“{r.text}”</p>
+    </div>
+  );
+
   return (
     <div ref={sectionRef} className="w-full relative">
       {/* Header Section */}
@@ -103,6 +165,39 @@ export default function TextToVideoSection() {
         <p className="mt-3 text-gray-400">
           Join <span className="text-white font-semibold">10,000+</span> creators turning prompts into polished videos—and sharing their results.
         </p>
+      </div>
+
+      {/* Reviews marquee */}
+      <div className="space-y-4 mb-16">
+        <div className="ps-marquee" style={{ '--ps-marquee-duration': '28s' }}>
+          <div className="ps-marquee__track">
+            <div className="flex items-stretch gap-4">
+              {reviews.map((r, idx) => (
+                <ReviewCard key={`r1-${idx}`} r={r} />
+              ))}
+            </div>
+            <div className="flex items-stretch gap-4" aria-hidden="true">
+              {reviews.map((r, idx) => (
+                <ReviewCard key={`r1dup-${idx}`} r={r} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="ps-marquee" style={{ '--ps-marquee-duration': '34s', '--ps-marquee-direction': 'reverse' }}>
+          <div className="ps-marquee__track">
+            <div className="flex items-stretch gap-4">
+              {reviews.slice().reverse().map((r, idx) => (
+                <ReviewCard key={`r2-${idx}`} r={r} />
+              ))}
+            </div>
+            <div className="flex items-stretch gap-4" aria-hidden="true">
+              {reviews.slice().reverse().map((r, idx) => (
+                <ReviewCard key={`r2dup-${idx}`} r={r} />
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Scroll to Top Button */}
