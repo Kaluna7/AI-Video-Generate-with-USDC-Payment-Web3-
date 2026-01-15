@@ -14,6 +14,7 @@ import GenerateConfirmModal from '../components/generator/modals/GenerateConfirm
 import { useAuthStore } from '../store/authStore';
 import { createTextToVideoJob, getVideoJob } from '../lib/api';
 import { addVideoHistoryItem, formatRelativeTime, getVideoHistory } from '../lib/videoHistory';
+import { sendArcNativeUsdcPayment, waitForTxReceipt } from '../lib/arc';
 
 export default function GeneratorPage() {
   const router = useRouter();
@@ -38,6 +39,9 @@ export default function GeneratorPage() {
   const [videoJobId, setVideoJobId] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
   const [generationError, setGenerationError] = useState('');
+  const [isPaying, setIsPaying] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const [paymentTxHash, setPaymentTxHash] = useState('');
   const [historyTick, setHistoryTick] = useState(0);
 
   // Keep latest values for polling callbacks without adding extra effect deps (eslint rule)
@@ -84,23 +88,26 @@ export default function GeneratorPage() {
     const cost = calculateCost();
     const isFree = !freeGenerationUsed;
 
+    setPaymentError('');
+    setPaymentTxHash('');
+
     if (isFree) {
       // Use free generation
       setFreeGenerationUsed(true);
       setGenerationStatus('generating');
     } else {
-      // Check balance
-      if (usdcBalance >= cost) {
-        setUsdcBalance(usdcBalance - cost);
-        setGenerationStatus('generating');
-      } else {
-        alert('Insufficient balance. Please add funds to your wallet.');
-        setIsConfirmModalOpen(false);
+      // Real Arc testnet payment (USDC native gas)
+      if (!walletAddress) {
+        setPaymentError('Please connect your wallet first.');
+        return;
+      }
+      if (typeof window === 'undefined' || !window.ethereum) {
+        setPaymentError('MetaMask not found. Please install MetaMask.');
         return;
       }
     }
 
-    setIsConfirmModalOpen(false);
+    // Keep modal open while paying; we close it only after payment is done (or free)
 
     // Start backend generation job (Text tab -> text-to-video)
     setGenerationError('');
@@ -109,6 +116,31 @@ export default function GeneratorPage() {
 
     (async () => {
       try {
+        if (!isFree) {
+          setIsPaying(true);
+          const treasury =
+            process.env.NEXT_PUBLIC_ARC_TREASURY_ADDRESS ||
+            walletAddress; // fallback for dev demo if treasury not configured
+
+          const txHash = await sendArcNativeUsdcPayment({
+            from: walletAddress,
+            to: treasury,
+            amountUsdc: cost.toFixed(2),
+          });
+          setPaymentTxHash(txHash);
+          // Wait for confirmation
+          const receipt = await waitForTxReceipt(txHash, { timeoutMs: 180000, pollMs: 2000 });
+          if (!receipt || receipt.status !== '0x1') {
+            throw new Error('Payment transaction failed');
+          }
+          setGenerationStatus('confirmed');
+          setIsPaying(false);
+          setIsConfirmModalOpen(false);
+          setGenerationStatus('generating');
+        } else {
+          setIsConfirmModalOpen(false);
+        }
+
         const job = await createTextToVideoJob({
           prompt,
           model: veoModel,
@@ -130,6 +162,7 @@ export default function GeneratorPage() {
             title,
             prompt,
             videoUrl: job.video_url,
+            paymentTxHash: paymentTxHash || null,
             createdAt: Date.now(),
           });
           setHistoryTick((t) => t + 1);
@@ -140,6 +173,9 @@ export default function GeneratorPage() {
           setGenerationStatus('generating');
         }
       } catch (e) {
+        setIsPaying(false);
+        setIsConfirmModalOpen(true);
+        setPaymentError(e.message || 'Payment failed');
         setGenerationError(e.message || 'Failed to start generation');
         setGenerationStatus('waiting');
       }
@@ -315,6 +351,8 @@ export default function GeneratorPage() {
         onConfirm={handleConfirmGeneration}
         cost={cost}
         isFree={isFree}
+        isPaying={isPaying}
+        paymentError={paymentError}
       />
     </div>
   );

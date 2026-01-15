@@ -1,6 +1,14 @@
 'use client';
 
-export default function GenerateConfirmModal({ isOpen, onClose, onConfirm, cost, isFree }) {
+export default function GenerateConfirmModal({
+  isOpen,
+  onClose,
+  onConfirm,
+  cost,
+  isFree,
+  isPaying = false,
+  paymentError = '',
+}) {
   if (!isOpen) return null;
 
   return (
@@ -50,10 +58,31 @@ export default function GenerateConfirmModal({ isOpen, onClose, onConfirm, cost,
               <div className="text-center">
                 <p className="text-sm text-gray-400 mb-2">Generation Cost</p>
                 <p className="text-3xl font-bold gradient-text mb-1">{cost.toFixed(2)} USDC</p>
-                <p className="text-xs text-gray-400">This amount will be deducted from your wallet</p>
+                <p className="text-xs text-gray-400">You&apos;ll pay on Arc testnet using USDC (native gas)</p>
               </div>
             )}
           </div>
+
+          {paymentError && (
+            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/40 rounded-lg text-red-300 text-sm">
+              {paymentError}
+            </div>
+          )}
+
+          {isPaying && (
+            <div className="mb-6 bg-gray-800/30 rounded-lg p-4 border border-gray-700/60">
+              <div className="flex items-center gap-3">
+                <svg className="animate-spin w-5 h-5 text-purple-300" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <div className="min-w-0">
+                  <p className="text-sm text-white font-medium">Waiting for wallet confirmation…</p>
+                  <p className="text-xs text-gray-400">Approve the transaction in MetaMask</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Info */}
           <div className="bg-gray-800/30 rounded-lg p-4 mb-6">
@@ -76,15 +105,17 @@ export default function GenerateConfirmModal({ isOpen, onClose, onConfirm, cost,
           <div className="flex gap-3">
             <button
               onClick={onClose}
+              disabled={isPaying}
               className="flex-1 py-3 px-4 bg-gray-700 text-white rounded-lg font-semibold hover:bg-gray-600 transition-colors"
             >
               No, Cancel
             </button>
             <button
               onClick={onConfirm}
+              disabled={isPaying}
               className="flex-1 py-3 px-4 gradient-purple-blue text-white rounded-lg font-semibold hover:opacity-90 transition-opacity"
             >
-              Yes, Generate
+              {isPaying ? 'Paying…' : 'Yes, Generate'}
             </button>
           </div>
         </div>
