@@ -2,7 +2,13 @@
 
 import { useRef, useState } from 'react';
 
-export default function VideoPreviewPanel({ generationStatus, videoUrl, errorMessage, recentGenerations = [] }) {
+export default function VideoPreviewPanel({
+  generationStatus,
+  videoUrl,
+  errorMessage,
+  recentGenerations = [],
+  onSeeAllRecent,
+}) {
   const videoThumbRefs = useRef({});
   const [playingThumbId, setPlayingThumbId] = useState(null);
 
@@ -135,7 +141,18 @@ export default function VideoPreviewPanel({ generationStatus, videoUrl, errorMes
 
       {/* Recent Generations Section */}
       <div className="bg-gray-800/50 rounded-xl p-5 border border-gray-700">
-        <h3 className="text-sm font-semibold text-white mb-3">Recent Generations</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-white">Recent Generations</h3>
+          {recentGenerations.length > 3 && (
+            <button
+              type="button"
+              onClick={() => onSeeAllRecent?.()}
+              className="text-xs text-purple-300 hover:text-purple-200 transition-colors"
+            >
+              See all →
+            </button>
+          )}
+        </div>
         {recentGenerations.length > 0 ? (
           <div className="grid grid-cols-3 gap-2">
             {recentGenerations.slice(0, 3).map((gen) => (

@@ -62,7 +62,6 @@ export default function GeneratorPage() {
 
   const recentGenerations =
     getVideoHistory(historyUserId)
-      .slice(0, 3)
       .map((v) => ({ ...v, time: formatRelativeTime(v.createdAt) }));
 
   const { freeGenerationUsed, setFreeGenerationUsed, usdcBalance, setUsdcBalance } = useAuthStore();
@@ -291,6 +290,7 @@ export default function GeneratorPage() {
                     videoUrl={videoUrl}
                     errorMessage={generationError}
                     recentGenerations={recentGenerations}
+                    onSeeAllRecent={handleNavigateToMyVideos}
                   />
                 </div>
               </div>
