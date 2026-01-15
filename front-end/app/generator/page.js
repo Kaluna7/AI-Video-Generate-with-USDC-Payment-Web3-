@@ -10,6 +10,7 @@ import MyVideosPage from '../components/generator/pages/MyVideosPage';
 import CreateVideoPanel from '../components/generator/panels/CreateVideoPanel';
 import VideoPreviewPanel from '../components/generator/panels/VideoPreviewPanel';
 import TextToVideoSection from '../components/generator/sections/TextToVideoSection';
+import ImageToVideoSection from '../components/generator/sections/ImageToVideoSection';
 import GenerateConfirmModal from '../components/generator/modals/GenerateConfirmModal';
 import { useAuthStore } from '../store/authStore';
 import { createTextToVideoJob, getCoinBalance, getVideoJob } from '../lib/api';
@@ -295,6 +296,15 @@ export default function GeneratorPage() {
         <div className="lg:pl-20 pb-10">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-[1600px]">
             <TextToVideoSection />
+          </div>
+        </div>
+      )}
+
+      {/* Image to Video Section - Full width component below grid (only for image-to-video) */}
+      {currentView === 'image-to-video' && (
+        <div className="lg:pl-20 pb-10">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-[1600px]">
+            <ImageToVideoSection />
           </div>
         </div>
       )}
