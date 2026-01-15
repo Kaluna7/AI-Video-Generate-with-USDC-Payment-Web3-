@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <radialGradient id="a" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(88 72) rotate(55) scale(150)">
+      <stop stop-color="#FFF7D6"/>
+      <stop offset="0.35" stop-color="#FFE08A"/>
+      <stop offset="0.7" stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#B45309"/>
+    </radialGradient>
+    <linearGradient id="b" x1="48" y1="54" x2="212" y2="210" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF2B2"/>
+      <stop offset="0.35" stop-color="#FDBA74"/>
+      <stop offset="0.7" stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="c" x1="72" y1="78" x2="182" y2="190" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B0F14" stop-opacity="0.65"/>
+      <stop offset="1" stop-color="#0B0F14" stop-opacity="0.25"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(84 70) rotate(40) scale(120)">
+      <stop stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="0.35" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="ds" x="0" y="0" width="256" height="256" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- 3D edge (shadowed rim) -->
+  <g filter="url(#ds)">
+    <ellipse cx="128" cy="138" rx="92" ry="92" fill="#000000" fill-opacity="0.18"/>
+    <circle cx="128" cy="128" r="94" fill="url(#b)"/>
+    <circle cx="128" cy="128" r="86" fill="url(#a)"/>
+    <circle cx="128" cy="128" r="86" fill="url(#shine)"/>
+    <circle cx="128" cy="128" r="94" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="6"/>
+  </g>
+
+  <!-- rim grooves -->
+  <g opacity="0.22">
+    <path d="M128 34c-52 0-94 42-94 94" stroke="#0B0F14" stroke-width="6" stroke-linecap="round"/>
+    <path d="M222 128c0 52-42 94-94 94" stroke="#0B0F14" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  <!-- inner emblem plate -->
+  <circle cx="128" cy="128" r="62" fill="url(#c)"/>
+  <circle cx="128" cy="128" r="62" fill="#FFFFFF" fill-opacity="0.06"/>
+  <circle cx="128" cy="128" r="62" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="4"/>
+
+  <!-- stylized "C" mark -->
+  <path
+    d="M154 98.5c-5.7-5.7-13.6-9.3-22.4-9.3-17.5 0-31.8 14.2-31.8 31.8 0 17.5 14.2 31.8 31.8 31.8 8.8 0 16.7-3.6 22.4-9.3"
+    stroke="#FFFFFF"
+    stroke-opacity="0.92"
+    stroke-width="10"
+    stroke-linecap="round"
+  />
+  <path
+    d="M154 98.5c-5.7-5.7-13.6-9.3-22.4-9.3-17.5 0-31.8 14.2-31.8 31.8 0 17.5 14.2 31.8 31.8 31.8 8.8 0 16.7-3.6 22.4-9.3"
+    stroke="#0B0F14"
+    stroke-opacity="0.25"
+    stroke-width="14"
+    stroke-linecap="round"
+  />
+</svg>
+
+

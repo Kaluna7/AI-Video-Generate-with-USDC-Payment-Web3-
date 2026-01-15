@@ -188,10 +188,19 @@ export default function AppHeader() {
             <button
               type="button"
               onClick={openTopUpModal}
-              className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors"
+              className="relative flex items-center gap-2 bg-gray-800/50 pl-2 pr-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors overflow-visible"
               title="Top up coins"
             >
-              <Image src="/assets/images/coin.svg" alt="Coin" width={16} height={16} />
+              {/* Oversized 3D coin that intentionally overflows the pill */}
+              <span className="relative -ml-3">
+                <Image
+                  src="/assets/images/coin-3d.svg"
+                  alt="Coin"
+                  width={34}
+                  height={34}
+                  className="-translate-y-1 drop-shadow-lg"
+                />
+              </span>
               <span className="text-sm font-semibold text-white">{Number(coinBalance || 0)}</span>
               <span className="text-xs text-gray-400 hidden sm:inline">Coins</span>
               <span className="text-xs text-gray-400 sm:hidden">C</span>

@@ -7,7 +7,7 @@ import { useAuthStore } from '../../../store/authStore';
 import { claimTopUp, getCoinBalance } from '../../../lib/api';
 import { sendArcNativeUsdcPayment, waitForTxReceipt } from '../../../lib/arc';
 
-const COIN_ICON_SRC = '/assets/images/coin.svg';
+const COIN_ICON_SRC = '/assets/images/coin-3d.svg';
 
 export default function TopUpModal() {
   const isOpen = useAuthStore((s) => s.isTopUpModalOpen);
