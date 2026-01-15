@@ -160,7 +160,7 @@ export default function TextToVideoSection() {
       {/* How it works */}
       <div className="mt-16 mb-18">
         <div className="text-center">
-          <h3 className="text-3xl md:text-4xl font-bold text-white">
+          <h3 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
             How to use PrimeStudio
           </h3>
           <p className="mt-3 text-gray-400">
@@ -233,7 +233,7 @@ export default function TextToVideoSection() {
 
       {/* Reviews header */}
       <div className="mt-20 mb-10 text-center">
-        <h3 className="text-3xl md:text-4xl font-bold text-white">
+        <h3 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
           Loved by creators who ship fast
         </h3>
         <p className="mt-3 text-gray-400">
