@@ -92,17 +92,19 @@ export default function PromptBarsStack({ items }) {
               (rel < 0 && absRel <= maxVisibleBehind);
 
             const y = rel * stackGapY;
-            // Active card should be brighter; stacked cards behind should be darker + more faded
-            const opacity = i === activeIndex ? 1 : Math.max(0.12, 0.42 - absRel * 0.14);
+            // Avoid "see-through" look: keep stacked cards fairly solid (high opacity),
+            // but make them feel further back via brightness + a touch of blur.
+            const opacity = i === activeIndex ? 1 : Math.max(0.88, 1 - absRel * 0.06);
             const scale = i === activeIndex ? 1 : Math.max(0.9, 1 - absRel * 0.05);
-            const brightness = i === activeIndex ? 1 : Math.max(0.72, 0.88 - absRel * 0.1);
+            const brightness = i === activeIndex ? 1 : Math.max(0.62, 0.78 - absRel * 0.08);
+            const blurPx = i === activeIndex ? 0 : Math.min(1.2, absRel * 0.6);
             const zIndex = 50 - absRel;
 
             gsap.to(el, {
               y,
               opacity: isVisible ? opacity : 0,
               scale: isVisible ? scale : 0.96,
-              filter: `brightness(${brightness})`,
+              filter: `brightness(${brightness}) blur(${blurPx}px)`,
               zIndex,
               duration: 0.25,
               overwrite: true,
