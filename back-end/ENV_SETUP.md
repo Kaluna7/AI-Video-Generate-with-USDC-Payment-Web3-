@@ -7,6 +7,15 @@ Create `back-end/.env` (do **not** commit it) and add:
 DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/DBNAME
 JWT_SECRET_KEY=CHANGE_ME_TO_A_RANDOM_SECRET
 
+# Circle (TESTNET / SANDBOX)
+# Use the **API Key** (secret) only in the backend.
+# The **Client Key** is for Circle Wallets SDK in the frontend (publishable),
+# do NOT use it as a replacement for the API key on the backend.
+CIRCLE_ENV=sandbox
+CIRCLE_API_KEY=PASTE_YOUR_TEST_API_KEY_HERE
+# Optional (only needed if you use Circle Wallets SDK on the frontend):
+CIRCLE_CLIENT_KEY=PASTE_YOUR_CLIENT_KEY_HERE
+
 # Google OAuth (Sign in with Google)
 # Create these in Google Cloud Console (OAuth client: Web application)
 GOOGLE_CLIENT_ID=PASTE_YOUR_CLIENT_ID_HERE
