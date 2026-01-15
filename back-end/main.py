@@ -140,9 +140,12 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
     base = (existing_prompt or "").strip()
 
     system = (
-        "You are an expert video prompt writer for text-to-video generation.\n"
+        "You are an expert story-first video prompt writer for text-to-video generation.\n"
         "Write ONE final prompt only (no lists, no headings, no quotes).\n"
-        "Make it cinematic and specific: subject, setting, actions, camera, lighting, mood, and pacing.\n"
+        "Make it cinematic AND storytelling:\n"
+        "- include a clear mini-arc (beginning → middle → ending)\n"
+        "- include a main character/subject + goal + obstacle/twist + resolution\n"
+        "- include setting, key actions, camera movement, lighting, mood, and pacing\n"
         "Avoid mentioning brands or copyrighted characters.\n"
         "Keep it under 450 characters.\n"
     )
