@@ -1,6 +1,6 @@
 'use client';
 
-export default function VideoPreviewPanel({ generationStatus, setGenerationStatus }) {
+export default function VideoPreviewPanel({ generationStatus, videoUrl, errorMessage }) {
   const steps = [
     { id: 'waiting', label: 'Waiting', icon: '⏱️' },
     { id: 'confirmed', label: 'Confirmed', icon: '✓' },
@@ -52,15 +52,13 @@ export default function VideoPreviewPanel({ generationStatus, setGenerationStatu
         </div>
         
         <div className="aspect-video bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg border border-gray-700 flex items-center justify-center relative overflow-hidden">
-          {generationStatus === 'ready' ? (
-            <div className="text-center z-10">
-              <button className="w-14 h-14 gradient-purple-blue rounded-full flex items-center justify-center mx-auto mb-3 hover:scale-110 transition-transform shadow-lg">
-                <svg className="w-7 h-7 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                </svg>
-              </button>
-              <p className="text-sm text-gray-400">Click to play video</p>
-            </div>
+          {generationStatus === 'ready' && videoUrl ? (
+            <video
+              className="absolute inset-0 w-full h-full object-cover"
+              src={videoUrl}
+              controls
+              playsInline
+            />
           ) : (
             <div className="text-center z-10">
               <div className="w-12 h-12 gradient-purple-blue rounded-full flex items-center justify-center mx-auto mb-3 opacity-40">
@@ -68,8 +66,12 @@ export default function VideoPreviewPanel({ generationStatus, setGenerationStatu
                   <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
                 </svg>
               </div>
-              <p className="text-sm text-gray-500">No video yet</p>
-              <p className="text-xs text-gray-600 mt-1">Configure & generate</p>
+              <p className="text-sm text-gray-500">
+                {generationStatus === 'generating' ? 'Generating...' : 'No video yet'}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">
+                {errorMessage ? errorMessage : 'Configure & generate'}
+              </p>
             </div>
           )}
         </div>

@@ -1,17 +1,19 @@
 import os
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict, Any
+from uuid import uuid4
 
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import Column, Integer, String, DateTime, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from passlib.context import CryptContext
 from jose import JWTError, jwt
+import requests
 
 try:
     from dotenv import load_dotenv
@@ -63,6 +65,7 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY", "CHANGE_ME_TO_A_RANDOM_SECRET")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 RESET_TOKEN_EXPIRE_MINUTES = 60  # 1 hour
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 def hash_password(password: str) -> str:
@@ -157,6 +160,127 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+
+# ==============================
+# Video generation schemas
+# ==============================
+
+
+class TextToVideoRequest(BaseModel):
+    prompt: str
+    duration_seconds: Optional[int] = 5
+    resolution: Optional[str] = "1080p"
+    fps: Optional[int] = 30
+    style: Optional[str] = None
+
+
+class VideoJobOut(BaseModel):
+    job_id: str
+    status: str  # queued | processing | succeeded | failed
+    provider: str
+    video_url: Optional[str] = None
+    error: Optional[str] = None
+    created_at: datetime
+
+
+# In-memory job store (OK for hackathon / single-instance dev)
+VIDEO_JOBS: Dict[str, Dict[str, Any]] = {}
+
+
+def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> User:
+    """
+    Validate JWT access token and return the User record.
+    Frontend should send: Authorization: Bearer <token>
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        sub = payload.get("sub")
+        if not sub:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        user_id = int(sub)
+    except (JWTError, ValueError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    return user
+
+
+def _provider_name() -> str:
+    return (os.getenv("VIDEO_PROVIDER") or "mock").strip().lower()
+
+
+def _replicate_headers() -> Dict[str, str]:
+    token = os.getenv("REPLICATE_API_TOKEN")
+    if token:
+        token = token.strip().strip('"').strip("'")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="REPLICATE_API_TOKEN is not set in environment",
+        )
+    return {
+        "Authorization": f"Token {token}",
+        "Content-Type": "application/json",
+    }
+
+
+def _replicate_create_prediction(prompt: str, duration_seconds: int) -> Dict[str, Any]:
+    """
+    Create a Replicate prediction.
+
+    You MUST set:
+    - REPLICATE_API_TOKEN
+    - REPLICATE_MODEL_VERSION (the model version id string)
+
+    Note: Different models require different `input` fields.
+    This implementation uses a simple, generic input with `prompt` and `duration`.
+    Adjust in your .env and/or here to match the chosen model.
+    """
+    version = os.getenv("REPLICATE_MODEL_VERSION")
+    if version:
+        version = version.strip().strip('"').strip("'")
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="REPLICATE_MODEL_VERSION is not set in environment",
+        )
+
+    payload = {
+        "version": version,
+        "input": {
+            "prompt": prompt,
+            "duration": duration_seconds,
+        },
+    }
+    resp = requests.post(
+        "https://api.replicate.com/v1/predictions",
+        headers=_replicate_headers(),
+        json=payload,
+        timeout=60,
+    )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Replicate error ({resp.status_code}): {resp.text}",
+        )
+    return resp.json()
+
+
+def _replicate_get_prediction(prediction_id: str) -> Dict[str, Any]:
+    resp = requests.get(
+        f"https://api.replicate.com/v1/predictions/{prediction_id}",
+        headers=_replicate_headers(),
+        timeout=30,
+    )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Replicate error ({resp.status_code}): {resp.text}",
+        )
+    return resp.json()
 
 
 # ==============================
@@ -270,3 +394,110 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     db.commit()
 
     return {"message": "Password has been reset successfully."}
+
+
+# ==============================
+# Video generation endpoints
+# ==============================
+
+
+@app.post("/video/text-to-video", response_model=VideoJobOut)
+def create_text_to_video_job(
+    body: TextToVideoRequest,
+    current_user: User = Depends(get_current_user),
+):
+    if not body.prompt or not body.prompt.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt is required")
+
+    provider = _provider_name()
+    job_id = str(uuid4())
+    created_at = datetime.utcnow()
+
+    # Default job shape
+    job: Dict[str, Any] = {
+        "job_id": job_id,
+        "status": "queued",
+        "provider": provider,
+        "video_url": None,
+        "error": None,
+        "created_at": created_at,
+        "user_id": current_user.id,
+    }
+
+    if provider == "mock":
+        # Instant success (useful for UI wiring without any API keys)
+        job["status"] = "succeeded"
+        job["video_url"] = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+
+    elif provider == "replicate":
+        pred = _replicate_create_prediction(body.prompt.strip(), int(body.duration_seconds or 5))
+        job["status"] = pred.get("status") or "processing"
+        job["provider_prediction_id"] = pred.get("id")
+        # Some models may return output immediately
+        output = pred.get("output")
+        if isinstance(output, str):
+            job["video_url"] = output
+        elif isinstance(output, list) and output:
+            job["video_url"] = output[0] if isinstance(output[0], str) else None
+        if job["video_url"] and job["status"] == "succeeded":
+            job["status"] = "succeeded"
+        elif job["status"] in ("starting", "processing", "queued"):
+            job["status"] = "processing"
+
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unsupported VIDEO_PROVIDER '{provider}'. Use 'mock' or 'replicate'.",
+        )
+
+    VIDEO_JOBS[job_id] = job
+    return VideoJobOut(
+        job_id=job_id,
+        status=job["status"],
+        provider=job["provider"],
+        video_url=job.get("video_url"),
+        error=job.get("error"),
+        created_at=job["created_at"],
+    )
+
+
+@app.get("/video/jobs/{job_id}", response_model=VideoJobOut)
+def get_video_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    job = VIDEO_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    if job.get("user_id") != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    provider = job.get("provider")
+    if provider == "replicate" and job.get("status") in ("queued", "processing"):
+        pred_id = job.get("provider_prediction_id")
+        if pred_id:
+            pred = _replicate_get_prediction(pred_id)
+            status_raw = pred.get("status") or "processing"
+            if status_raw in ("starting", "processing", "queued"):
+                job["status"] = "processing"
+            elif status_raw == "succeeded":
+                job["status"] = "succeeded"
+                output = pred.get("output")
+                if isinstance(output, str):
+                    job["video_url"] = output
+                elif isinstance(output, list) and output:
+                    job["video_url"] = output[0] if isinstance(output[0], str) else None
+            elif status_raw == "failed":
+                job["status"] = "failed"
+                job["error"] = (pred.get("error") or "Provider failed").strip() if pred.get("error") else "Provider failed"
+
+            VIDEO_JOBS[job_id] = job
+
+    return VideoJobOut(
+        job_id=job_id,
+        status=job["status"],
+        provider=job["provider"],
+        video_url=job.get("video_url"),
+        error=job.get("error"),
+        created_at=job["created_at"],
+    )

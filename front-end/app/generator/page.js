@@ -12,6 +12,7 @@ import VideoPreviewPanel from '../components/generator/panels/VideoPreviewPanel'
 import TextToVideoSection from '../components/generator/sections/TextToVideoSection';
 import GenerateConfirmModal from '../components/generator/modals/GenerateConfirmModal';
 import { useAuthStore } from '../store/authStore';
+import { createTextToVideoJob, getVideoJob } from '../lib/api';
 
 export default function GeneratorPage() {
   const router = useRouter();
@@ -26,6 +27,9 @@ export default function GeneratorPage() {
   const [aiEnhancement, setAiEnhancement] = useState(true);
   const [generationStatus, setGenerationStatus] = useState('waiting'); // waiting, confirmed, generating, ready
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [videoJobId, setVideoJobId] = useState(null);
+  const [videoUrl, setVideoUrl] = useState(null);
+  const [generationError, setGenerationError] = useState('');
 
   // Redirect to home if not logged in
   useEffect(() => {
@@ -70,11 +74,66 @@ export default function GeneratorPage() {
     }
 
     setIsConfirmModalOpen(false);
-    // Simulate generation process
-    setTimeout(() => {
-      setGenerationStatus('ready');
-    }, 5000);
+
+    // Start backend generation job (Text tab -> text-to-video)
+    setGenerationError('');
+    setVideoUrl(null);
+    setVideoJobId(null);
+
+    (async () => {
+      try {
+        const job = await createTextToVideoJob({
+          prompt,
+          duration_seconds: selectedLength === '5s' ? 5 : selectedLength === '10s' ? 10 : 30,
+          resolution,
+          fps: parseInt((frameRate || '30').toString(), 10) || 30,
+          style: selectedStyle,
+        });
+        setVideoJobId(job.job_id);
+        if (job.status === 'succeeded' && job.video_url) {
+          setVideoUrl(job.video_url);
+          setGenerationStatus('ready');
+        } else if (job.status === 'failed') {
+          setGenerationError(job.error || 'Generation failed');
+          setGenerationStatus('waiting');
+        } else {
+          setGenerationStatus('generating');
+        }
+      } catch (e) {
+        setGenerationError(e.message || 'Failed to start generation');
+        setGenerationStatus('waiting');
+      }
+    })();
   };
+
+  // Poll job status while generating
+  useEffect(() => {
+    if (generationStatus !== 'generating' || !videoJobId) return;
+
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      try {
+        const job = await getVideoJob(videoJobId);
+        if (cancelled) return;
+        if (job.status === 'succeeded' && job.video_url) {
+          setVideoUrl(job.video_url);
+          setGenerationStatus('ready');
+          clearInterval(interval);
+        } else if (job.status === 'failed') {
+          setGenerationError(job.error || 'Generation failed');
+          setGenerationStatus('waiting');
+          clearInterval(interval);
+        }
+      } catch (e) {
+        // Keep polling; transient errors happen during dev
+      }
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [generationStatus, videoJobId]);
 
   const cost = calculateCost();
   const isFree = !freeGenerationUsed;
@@ -165,7 +224,8 @@ export default function GeneratorPage() {
                 <div className="custom-scrollbar-right">
                   <VideoPreviewPanel
                     generationStatus={generationStatus}
-                    setGenerationStatus={setGenerationStatus}
+                    videoUrl={videoUrl}
+                    errorMessage={generationError}
                   />
                 </div>
               </div>

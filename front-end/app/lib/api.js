@@ -118,3 +118,40 @@ export const resetPassword = async (data) => {
   }
 };
 
+// ==============================
+// Video generation (Text to Video)
+// ==============================
+
+const getAuthHeaders = () => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+export const createTextToVideoJob = async ({ prompt, duration_seconds, resolution, fps, style }) => {
+  const response = await fetch(`${API_BASE_URL}/video/text-to-video`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({
+      prompt,
+      duration_seconds,
+      resolution,
+      fps,
+      style,
+    }),
+  });
+  return await handleResponse(response);
+};
+
+export const getVideoJob = async (jobId) => {
+  const response = await fetch(`${API_BASE_URL}/video/jobs/${jobId}`, {
+    method: 'GET',
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+  return await handleResponse(response);
+};
+
