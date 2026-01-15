@@ -160,7 +160,7 @@ export default function TextToVideoSection() {
       {/* How it works */}
       <div className="mt-16 mb-18">
         <div className="text-center">
-          <h3 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
+          <h3 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
             How to use PrimeStudio
           </h3>
           <p className="mt-3 text-gray-400">
@@ -192,7 +192,7 @@ export default function TextToVideoSection() {
               <p className="text-white font-semibold">Choose Veo settings</p>
             </div>
             <p className="mt-3 text-sm text-gray-300 leading-relaxed">
-              Pick your model, aspect ratio (16:9 / 9:16), and watermark preference—optimized for Shorts, Reels, TikTok, or widescreen.
+              Pick your model and aspect ratio (16:9 / 9:16)—optimized for Shorts, Reels, TikTok, or widescreen.
             </p>
             <div className="mt-4 text-xs text-gray-400">
               Recommended: 9:16 for social, 16:9 for YouTube.
@@ -233,7 +233,7 @@ export default function TextToVideoSection() {
 
       {/* Reviews header */}
       <div className="mt-20 mb-10 text-center">
-        <h3 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
+        <h3 className="text-3xl md:text-4xl font-bold bg-linear-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
           Loved by creators who ship fast
         </h3>
         <p className="mt-3 text-gray-400">

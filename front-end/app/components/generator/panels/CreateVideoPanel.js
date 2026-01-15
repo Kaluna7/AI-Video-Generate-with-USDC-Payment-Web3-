@@ -21,8 +21,6 @@ export default function CreateVideoPanel({
   setVeoModel,
   veoAspectRatio,
   setVeoAspectRatio,
-  veoWatermark,
-  setVeoWatermark,
   aiEnhancement,
   setAiEnhancement,
   onGenerate,
@@ -144,16 +142,6 @@ export default function CreateVideoPanel({
                   <option key={ar} value={ar}>{ar}</option>
                 ))}
               </select>
-            </div>
-
-            <div>
-              <label className="block text-xs text-gray-400 mb-2">Watermark</label>
-              <input
-                value={veoWatermark ?? ''}
-                onChange={(e) => setVeoWatermark?.(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
-                placeholder="Optional"
-              />
             </div>
           </div>
         </div>
