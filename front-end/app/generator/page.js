@@ -27,7 +27,7 @@ export default function GeneratorPage() {
   // Veo 3.1 params
   const [veoModel, setVeoModel] = useState('veo3-fast'); // veo3-fast | veo3
   const [veoAspectRatio, setVeoAspectRatio] = useState('16:9'); // 16:9 | 9:16 | Auto
-  const [veoWatermark, setVeoWatermark] = useState('veo'); // string or null
+  const [veoWatermark, setVeoWatermark] = useState(''); // optional
 
   // Legacy UI state (kept so existing components don't break if referenced elsewhere)
   const [selectedLength, setSelectedLength] = useState('10s');

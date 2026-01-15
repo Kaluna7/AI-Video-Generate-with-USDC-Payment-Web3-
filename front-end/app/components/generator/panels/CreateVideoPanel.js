@@ -152,7 +152,7 @@ export default function CreateVideoPanel({
                 value={veoWatermark ?? ''}
                 onChange={(e) => setVeoWatermark?.(e.target.value)}
                 className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
-                placeholder="veo (or leave empty for none)"
+                placeholder="Optional"
               />
             </div>
           </div>

@@ -256,7 +256,7 @@ class TextToVideoRequest(BaseModel):
     # Veo 3.1 API params
     model: Optional[str] = "veo3-fast"  # veo3 | veo3-fast
     aspect_ratio: Optional[str] = "16:9"  # 16:9 | 9:16 | Auto
-    watermark: Optional[str] = "veo"  # string or null
+    watermark: Optional[str] = None  # string or null
 
     # Back-compat for older UI fields (ignored by Veo 3.1 provider)
     duration_seconds: Optional[int] = None
