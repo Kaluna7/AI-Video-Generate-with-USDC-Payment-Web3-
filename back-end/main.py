@@ -286,9 +286,9 @@ def _replicate_get_prediction(prediction_id: str) -> Dict[str, Any]:
 def _veo3_base_url() -> str:
     """
     Veo3 provider base URL.
-    Default is a common gateway style (can be overridden via env).
+    Default follows Veo 3.1 docs (can be overridden via env).
     """
-    base = os.getenv("VEO3_BASE_URL") or "https://api.veo3gen.co/api/veo"
+    base = os.getenv("VEO3_BASE_URL") or "https://veo3api.com"
     return base.strip().rstrip("/")
 
 
@@ -301,12 +301,13 @@ def _veo3_headers() -> Dict[str, str]:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="VEO3_API_KEY is not set in environment",
         )
-    # Most Veo3 gateways use X-API-Key; if yours differs, set VEO3_AUTH_HEADER_NAME
-    header_name = (os.getenv("VEO3_AUTH_HEADER_NAME") or "X-API-Key").strip()
-    return {
-        header_name: key,
-        "Content-Type": "application/json",
-    }
+    # Veo 3.1 docs use: Authorization: Bearer YOUR_API_KEY
+    header_name = (os.getenv("VEO3_AUTH_HEADER_NAME") or "Authorization").strip()
+    header_value = key
+    if header_name.lower() == "authorization":
+        # Support both: raw key or already prefixed "Bearer ..."
+        header_value = key if key.lower().startswith("bearer ") else f"Bearer {key}"
+    return {header_name: header_value, "Content-Type": "application/json"}
 
 
 def _veo3_create_task(prompt: str, duration_seconds: int) -> Dict[str, Any]:
@@ -315,30 +316,28 @@ def _veo3_create_task(prompt: str, duration_seconds: int) -> Dict[str, Any]:
     Env customization:
     - VEO3_BASE_URL
     - VEO3_API_KEY
-    - VEO3_AUTH_HEADER_NAME (default: X-API-Key)
-    - VEO3_MODEL (optional)
+    - VEO3_AUTH_HEADER_NAME (default: Authorization)
+    - VEO3_MODEL (optional, default: veo3-fast)
     - VEO3_ASPECT_RATIO (optional, e.g. 16:9)
-    - VEO3_GENERATE_AUDIO (optional, true/false)
+    - VEO3_WATERMARK (optional, set to "null" string to send JSON null)
     """
-    payload: Dict[str, Any] = {
-        "prompt": prompt,
-        "durationSeconds": int(duration_seconds),
-    }
+    # Veo 3.1: POST /generate
+    payload: Dict[str, Any] = {"prompt": prompt}
 
     model = os.getenv("VEO3_MODEL")
-    if model and model.strip():
-        payload["model"] = model.strip()
+    payload["model"] = (model.strip() if model and model.strip() else "veo3-fast")
 
     aspect = os.getenv("VEO3_ASPECT_RATIO")
     if aspect and aspect.strip():
-        payload["aspectRatio"] = aspect.strip()
+        payload["aspect_ratio"] = aspect.strip()
 
-    gen_audio = os.getenv("VEO3_GENERATE_AUDIO")
-    if gen_audio is not None and gen_audio.strip() != "":
-        payload["generateAudio"] = gen_audio.strip().lower() in ("1", "true", "yes", "y", "on")
+    watermark = os.getenv("VEO3_WATERMARK")
+    if watermark is not None and watermark.strip() != "":
+        wm = watermark.strip()
+        payload["watermark"] = None if wm.lower() == "null" else wm
 
     resp = requests.post(
-        f"{_veo3_base_url()}/text-to-video",
+        f"{_veo3_base_url()}/generate",
         headers=_veo3_headers(),
         json=payload,
         timeout=60,
@@ -358,11 +357,8 @@ def _veo3_create_task(prompt: str, duration_seconds: int) -> Dict[str, Any]:
 
 
 def _veo3_get_status(task_id: str) -> Dict[str, Any]:
-    resp = requests.get(
-        f"{_veo3_base_url()}/status/{task_id}",
-        headers=_veo3_headers(),
-        timeout=30,
-    )
+    # Veo 3.1: GET /feed?task_id=...
+    resp = requests.get(f"{_veo3_base_url()}/feed", headers=_veo3_headers(), params={"task_id": task_id}, timeout=30)
     if resp.status_code in (401, 403):
         raise HTTPException(
             status_code=resp.status_code,
@@ -377,9 +373,12 @@ def _veo3_get_status(task_id: str) -> Dict[str, Any]:
 
 
 def _veo3_get_download(task_id: str) -> Dict[str, Any]:
+    # Veo 3.1 doesn't have /download; the URL is returned in /feed response.
+    # We keep this helper for optional 1080p endpoint.
     resp = requests.get(
-        f"{_veo3_base_url()}/download/{task_id}",
+        f"{_veo3_base_url()}/get-1080p",
         headers=_veo3_headers(),
+        params={"task_id": task_id},
         timeout=60,
     )
     if resp.status_code in (401, 403):
@@ -558,24 +557,22 @@ def create_text_to_video_job(
 
     elif provider == "veo3":
         task = _veo3_create_task(body.prompt.strip(), int(body.duration_seconds or 5))
-        # Try common task id fields
-        task_id = task.get("taskId") or task.get("task_id") or task.get("id")
+        # Veo 3.1 docs: { code, message, data: { task_id } }
+        data = task.get("data") if isinstance(task, dict) else None
+        task_id = None
+        if isinstance(data, dict):
+            task_id = data.get("task_id")
+        # Fallbacks for other shapes
+        if not task_id and isinstance(task, dict):
+            task_id = task.get("taskId") or task.get("task_id") or task.get("id")
         if not task_id:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Veo3 provider response missing task id: {task}",
             )
         job["provider_task_id"] = str(task_id)
-        status_raw = (task.get("status") or "processing").lower()
-        if status_raw in ("queued", "pending", "starting", "processing", "running"):
-            job["status"] = "processing"
-        elif status_raw in ("completed", "succeeded", "success", "done"):
-            job["status"] = "succeeded"
-        elif status_raw in ("failed", "error"):
-            job["status"] = "failed"
-            job["error"] = task.get("error") or "Provider failed"
-        else:
-            job["status"] = "processing"
+        # Generate is async -> processing
+        job["status"] = "processing"
 
     else:
         raise HTTPException(
@@ -630,27 +627,33 @@ def get_video_job(
         task_id = job.get("provider_task_id")
         if task_id:
             st = _veo3_get_status(str(task_id))
-            status_raw = (st.get("status") or "processing").lower()
-            if status_raw in ("queued", "pending", "starting", "processing", "running"):
+            # Veo 3.1 docs: { code, message, data: { status, response: [url] } }
+            data = st.get("data") if isinstance(st, dict) else None
+            status_raw = None
+            response_list = None
+            if isinstance(data, dict):
+                status_raw = data.get("status")
+                response_list = data.get("response")
+            status_norm = (status_raw or "PROCESSING").upper()
+
+            if status_norm in ("QUEUED", "PENDING", "STARTING", "PROCESSING", "RUNNING"):
                 job["status"] = "processing"
-            elif status_raw in ("failed", "error"):
+            elif status_norm in ("FAILED", "ERROR"):
                 job["status"] = "failed"
-                job["error"] = st.get("error") or "Provider failed"
-            elif status_raw in ("completed", "succeeded", "success", "done"):
-                # fetch download url
-                dl = _veo3_get_download(str(task_id))
+                job["error"] = (st.get("message") or "Provider failed") if isinstance(st, dict) else "Provider failed"
+            elif status_norm in ("COMPLETED", "SUCCEEDED", "SUCCESS", "DONE"):
+                # The generated video URL is in data.response[]
                 video_url = None
-                if isinstance(dl, dict):
-                    if isinstance(dl.get("url"), str):
-                        video_url = dl.get("url")
-                    elif isinstance(dl.get("videoUrl"), str):
-                        video_url = dl.get("videoUrl")
-                    elif isinstance(dl.get("videos"), list) and dl["videos"]:
-                        first = dl["videos"][0]
-                        if isinstance(first, dict) and isinstance(first.get("url"), str):
-                            video_url = first.get("url")
-                        elif isinstance(first, str):
-                            video_url = first
+                if isinstance(response_list, list) and response_list:
+                    if isinstance(response_list[0], str):
+                        video_url = response_list[0]
+                # Optional: get 1080p URL
+                use_1080p = (os.getenv("VEO3_USE_1080P") or "").strip().lower() in ("1", "true", "yes", "y", "on")
+                if use_1080p:
+                    dl = _veo3_get_download(str(task_id))
+                    dl_data = dl.get("data") if isinstance(dl, dict) else None
+                    if isinstance(dl_data, dict) and isinstance(dl_data.get("result_url"), str):
+                        video_url = dl_data.get("result_url")
                 job["video_url"] = video_url
                 job["status"] = "succeeded" if video_url else "failed"
                 if not video_url:

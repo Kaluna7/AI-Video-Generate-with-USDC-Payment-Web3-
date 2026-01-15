@@ -15,15 +15,17 @@ VIDEO_PROVIDER=mock
 REPLICATE_API_TOKEN=PASTE_YOUR_KEY_HERE
 REPLICATE_MODEL_VERSION=PASTE_MODEL_VERSION_ID_HERE
 
-# If VIDEO_PROVIDER=veo3:
-# (Defaults assume a common Veo3 gateway; override if your provider uses a different base URL/header.)
-VEO3_BASE_URL=https://api.veo3gen.co/api/veo
+# If VIDEO_PROVIDER=veo3 (Veo 3.1 docs):
+VEO3_BASE_URL=https://veo3api.com
 VEO3_API_KEY=PASTE_YOUR_KEY_HERE
+# Auth per docs:
+VEO3_AUTH_HEADER_NAME=Authorization
 # Optional:
-VEO3_AUTH_HEADER_NAME=X-API-Key
-VEO3_MODEL=veo-3.0-fast-generate-preview
+VEO3_MODEL=veo3-fast
 VEO3_ASPECT_RATIO=16:9
-VEO3_GENERATE_AUDIO=true
+VEO3_WATERMARK=veo
+# If true, after COMPLETED we call /get-1080p to fetch the free 1080p URL
+VEO3_USE_1080P=true
 ```
 
 Notes:
