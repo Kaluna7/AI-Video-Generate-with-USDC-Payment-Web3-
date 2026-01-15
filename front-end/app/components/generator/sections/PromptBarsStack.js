@@ -62,9 +62,11 @@ export default function PromptBarsStack({ items }) {
         gsap.set(cards, { opacity: 1, scale: 1, y: 0 });
         gsap.set(cards, { position: 'relative', zIndex: 1 });
 
-        // Measure list positions to compute how much each card must move to align to the first card
-        const firstTop = cards[0].getBoundingClientRect().top;
-        const deltas = cards.map((el) => el.getBoundingClientRect().top - firstTop);
+        // Measure list positions and compute how much each card must move to align to
+        // a stable "active slot" centered in the viewport.
+        const firstRect = cards[0].getBoundingClientRect();
+        const activeSlotTop = Math.round(window.innerHeight * 0.5 - firstRect.height * 0.5);
+        const deltas = cards.map((el) => el.getBoundingClientRect().top - activeSlotTop);
 
         const stackGapY = 88;
         // Reduce pinned scroll distance per step so card #3 doesn't feel "too far" to reach.
