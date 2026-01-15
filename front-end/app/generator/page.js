@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '../components/generator/layout/AppHeader';
 import SidebarNav from '../components/generator/layout/SidebarNav';
@@ -13,6 +13,7 @@ import TextToVideoSection from '../components/generator/sections/TextToVideoSect
 import GenerateConfirmModal from '../components/generator/modals/GenerateConfirmModal';
 import { useAuthStore } from '../store/authStore';
 import { createTextToVideoJob, getVideoJob } from '../lib/api';
+import { addVideoHistoryItem, formatRelativeTime, getVideoHistory } from '../lib/videoHistory';
 
 export default function GeneratorPage() {
   const router = useRouter();
@@ -36,6 +37,17 @@ export default function GeneratorPage() {
   const [videoJobId, setVideoJobId] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
   const [generationError, setGenerationError] = useState('');
+  const [historyTick, setHistoryTick] = useState(0);
+
+  // Keep latest values for polling callbacks without adding extra effect deps (eslint rule)
+  const promptRef = useRef(prompt);
+  const activeTabRef = useRef(activeTab);
+  const currentViewRef = useRef(currentView);
+  useEffect(() => {
+    promptRef.current = prompt;
+    activeTabRef.current = activeTab;
+    currentViewRef.current = currentView;
+  }, [prompt, activeTab, currentView]);
 
   // Redirect to home if not logged in
   useEffect(() => {
@@ -43,6 +55,13 @@ export default function GeneratorPage() {
       router.push('/');
     }
   }, [user, router]);
+
+  const recentGenerations =
+    user?.id
+      ? getVideoHistory(user.id)
+          .slice(0, 3)
+          .map((v) => ({ ...v, time: formatRelativeTime(v.createdAt) }))
+      : [];
 
   const { freeGenerationUsed, setFreeGenerationUsed, usdcBalance, setUsdcBalance } = useAuthStore();
 
@@ -99,6 +118,22 @@ export default function GeneratorPage() {
         if (job.status === 'succeeded' && job.video_url) {
           setVideoUrl(job.video_url);
           setGenerationStatus('ready');
+
+          if (user?.id) {
+            const title =
+              prompt.split(/[.\n]/)[0]?.trim().slice(0, 32) ||
+              (currentView === 'image-to-video' ? 'Image to Video' : 'Text to Video');
+            addVideoHistoryItem(user.id, {
+              id: `${job.job_id}`,
+              jobId: job.job_id,
+              type: activeTab === 'image' ? 'image' : 'text',
+              title,
+              prompt,
+              videoUrl: job.video_url,
+              createdAt: Date.now(),
+            });
+            setHistoryTick((t) => t + 1);
+          }
         } else if (job.status === 'failed') {
           setGenerationError(job.error || 'Generation failed');
           setGenerationStatus('waiting');
@@ -125,6 +160,25 @@ export default function GeneratorPage() {
           setVideoUrl(job.video_url);
           setGenerationStatus('ready');
           clearInterval(interval);
+
+          if (user?.id) {
+            const latestPrompt = promptRef.current;
+            const latestTab = activeTabRef.current;
+            const latestView = currentViewRef.current;
+            const title =
+              latestPrompt.split(/[.\n]/)[0]?.trim().slice(0, 32) ||
+              (latestView === 'image-to-video' ? 'Image to Video' : 'Text to Video');
+            addVideoHistoryItem(user.id, {
+              id: `${videoJobId}`,
+              jobId: videoJobId,
+              type: latestTab === 'image' ? 'image' : 'text',
+              title,
+              prompt: latestPrompt,
+              videoUrl: job.video_url,
+              createdAt: Date.now(),
+            });
+            setHistoryTick((t) => t + 1);
+          }
         } else if (job.status === 'failed') {
           setGenerationError(job.error || 'Generation failed');
           setGenerationStatus('waiting');
@@ -139,7 +193,7 @@ export default function GeneratorPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [generationStatus, videoJobId]);
+  }, [generationStatus, videoJobId, user?.id]);
 
   const cost = calculateCost();
   const isFree = !freeGenerationUsed;
@@ -238,6 +292,7 @@ export default function GeneratorPage() {
                     generationStatus={generationStatus}
                     videoUrl={videoUrl}
                     errorMessage={generationError}
+                    recentGenerations={recentGenerations}
                   />
                 </div>
               </div>

@@ -1,63 +1,39 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useAuthStore } from '../../../store/authStore';
+import { formatRelativeTime, getVideoHistory } from '../../../lib/videoHistory';
 
 export default function MyVideosPage() {
   const [activeTab, setActiveTab] = useState('text');
+  const user = useAuthStore((state) => state.user);
+  const [historyTick, setHistoryTick] = useState(0);
 
-  // Sample videos data - in real app, this would come from API
-  const textToVideoVideos = [
-    {
-      id: 1,
-      title: 'Futuristic Cityscape',
-      prompt: 'A cinematic drone shot flying over a futuristic city at sunset with neon lights',
-      thumbnail: 'cityscape',
-      duration: '10s',
-      createdAt: '2 hours ago',
-      status: 'ready',
-    },
-    {
-      id: 2,
-      title: 'Ocean Waves',
-      prompt: 'Dramatic ocean waves crashing against rocky cliffs with golden hour lighting',
-      thumbnail: 'ocean',
-      duration: '15s',
-      createdAt: '1 day ago',
-      status: 'ready',
-    },
-    {
-      id: 3,
-      title: 'Mountain Landscape',
-      prompt: 'Aerial view of snow-capped mountains at golden hour with dramatic clouds',
-      thumbnail: 'mountain',
-      duration: '12s',
-      createdAt: '3 days ago',
-      status: 'ready',
-    },
-  ];
+  useEffect(() => {
+    const handler = () => setHistoryTick((t) => t + 1);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('primeStudio:videoHistoryUpdated', handler);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('primeStudio:videoHistoryUpdated', handler);
+      }
+    };
+  }, []);
 
-  const imageToVideoVideos = [
-    {
-      id: 4,
-      title: 'Abstract Transformation',
-      prompt: 'Abstract patterns flowing and morphing from uploaded image',
-      thumbnail: 'abstract',
-      duration: '8s',
-      createdAt: '5 hours ago',
-      status: 'ready',
-    },
-    {
-      id: 5,
-      title: 'Portrait Animation',
-      prompt: 'Animated portrait with dynamic lighting effects',
-      thumbnail: 'portrait',
-      duration: '10s',
-      createdAt: '2 days ago',
-      status: 'ready',
-    },
-  ];
-
-  const videos = activeTab === 'text' ? textToVideoVideos : imageToVideoVideos;
+  const filtered = (() => {
+    if (!user?.id) return [];
+    // touch historyTick so UI refreshes when history changes
+    void historyTick;
+    const type = activeTab === 'text' ? 'text' : 'image';
+    return getVideoHistory(user.id)
+      .map((v) => ({
+        ...v,
+        createdAtLabel: formatRelativeTime(v.createdAt),
+        status: 'ready',
+      }))
+      .filter((v) => (v.type || 'text') === type);
+  })();
 
   return (
     <div className="space-y-6">
@@ -96,25 +72,25 @@ export default function MyVideosPage() {
       </div>
 
       {/* Videos Grid */}
-      {videos.length > 0 ? (
+      {filtered.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {videos.map((video) => (
+          {filtered.map((video) => (
             <div
               key={video.id}
               className="group bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden hover:border-purple-500/50 transition-all"
             >
               {/* Thumbnail */}
-              <div className="aspect-video bg-gradient-to-br from-purple-500/20 via-blue-500/20 to-cyan-500/20 relative overflow-hidden">
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-16 h-16 gradient-purple-blue rounded-full flex items-center justify-center opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all cursor-pointer">
-                    <svg className="w-8 h-8 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 rounded text-xs text-white">
-                  {video.duration}
-                </div>
+              <div className="aspect-video bg-linear-to-br from-purple-500/20 via-blue-500/20 to-cyan-500/20 relative overflow-hidden">
+                {video.videoUrl ? (
+                  <video
+                    className="absolute inset-0 w-full h-full object-cover"
+                    src={video.videoUrl}
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : null}
                 {video.status === 'ready' && (
                   <div className="absolute top-2 right-2 px-2 py-1 bg-green-500/80 rounded text-xs text-white font-medium">
                     Ready
@@ -128,7 +104,7 @@ export default function MyVideosPage() {
                   {video.title}
                 </h3>
                 <p className="text-sm text-gray-400 line-clamp-2 mb-3">{video.prompt}</p>
-                <p className="text-xs text-gray-500 mb-4">{video.createdAt}</p>
+                <p className="text-xs text-gray-500 mb-4">{video.createdAtLabel}</p>
 
                 {/* Actions */}
                 <div className="flex items-center gap-2 pt-4 border-t border-gray-700">
@@ -157,7 +133,7 @@ export default function MyVideosPage() {
             </svg>
           </div>
           <p className="text-gray-400 mb-2">No videos yet</p>
-          <p className="text-sm text-gray-500">Start generating videos to see them here</p>
+          <p className="text-sm text-gray-500">Generate videos to see them here</p>
         </div>
       )}
     </div>

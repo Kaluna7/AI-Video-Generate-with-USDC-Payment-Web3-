@@ -37,7 +37,7 @@ export default function TextToVideoSection() {
       headline: 'Customize with a Variety of Styles',
       description: 'Choose the AI video style you want to generate, whether it\'s Anime, Realistic, Cinematic, or Abstract. PrimeStudio offers diverse style options to match your creative vision.',
       prompt: 'Anime style character with vibrant purple hair and cherry blossoms',
-      videoSrc: '/assets/video/samoyed.mp4',
+      videoSrc: '/assets/video/stickman.mp4',
       videoTitle: 'Anime Style',
       videoDuration: '12s',
       videoFormat: 'MP4',
@@ -94,6 +94,16 @@ export default function TextToVideoSection() {
       </div>
 
       <PromptBarsStack items={promptingBars} />
+
+      {/* Reviews header */}
+      <div className="mt-20 mb-10 text-center">
+        <h3 className="text-3xl md:text-4xl font-bold text-white">
+          Loved by creators who ship fast
+        </h3>
+        <p className="mt-3 text-gray-400">
+          Join <span className="text-white font-semibold">10,000+</span> creators turning prompts into polished videos—and sharing their results.
+        </p>
+      </div>
 
       {/* Scroll to Top Button */}
       <button

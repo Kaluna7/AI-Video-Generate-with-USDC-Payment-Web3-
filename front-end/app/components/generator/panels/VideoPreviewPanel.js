@@ -1,6 +1,6 @@
 'use client';
 
-export default function VideoPreviewPanel({ generationStatus, videoUrl, errorMessage }) {
+export default function VideoPreviewPanel({ generationStatus, videoUrl, errorMessage, recentGenerations = [] }) {
   const steps = [
     { id: 'waiting', label: 'Waiting', icon: '⏱️' },
     { id: 'confirmed', label: 'Confirmed', icon: '✓' },
@@ -22,12 +22,6 @@ export default function VideoPreviewPanel({ generationStatus, videoUrl, errorMes
     const index = steps.findIndex(s => s.id === generationStatus);
     return index + 1;
   };
-
-  const recentGenerations = [
-    { title: 'Futuristic city', time: '2h ago' },
-    { title: 'Ocean waves', time: '5h ago' },
-    { title: 'Mountain view', time: '1d ago' },
-  ];
 
   return (
     <div className="space-y-4">
@@ -137,15 +131,23 @@ export default function VideoPreviewPanel({ generationStatus, videoUrl, errorMes
       {/* Recent Generations Section */}
       <div className="bg-gray-800/50 rounded-xl p-5 border border-gray-700">
         <h3 className="text-sm font-semibold text-white mb-3">Recent Generations</h3>
-        <div className="grid grid-cols-3 gap-2">
-          {recentGenerations.map((gen, index) => (
-            <div key={index} className="aspect-square bg-gradient-to-br from-purple-500/10 to-blue-500/10 rounded-lg border border-gray-700 flex flex-col items-center justify-center p-2 hover:border-purple-500/50 transition-colors cursor-pointer group">
-              <div className="w-full h-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded mb-1.5 group-hover:from-purple-500/30 group-hover:to-blue-500/30 transition-colors"></div>
-              <p className="text-[10px] text-gray-400 text-center truncate w-full">{gen.title}</p>
-              <p className="text-[10px] text-gray-600">{gen.time}</p>
-            </div>
-          ))}
-        </div>
+        {recentGenerations.length > 0 ? (
+          <div className="grid grid-cols-3 gap-2">
+            {recentGenerations.slice(0, 3).map((gen) => (
+              <div
+                key={gen.id}
+                className="aspect-square bg-gradient-to-br from-purple-500/10 to-blue-500/10 rounded-lg border border-gray-700 flex flex-col items-center justify-center p-2 hover:border-purple-500/50 transition-colors cursor-pointer group"
+                title={gen.prompt}
+              >
+                <div className="w-full h-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded mb-1.5 group-hover:from-purple-500/30 group-hover:to-blue-500/30 transition-colors"></div>
+                <p className="text-[10px] text-gray-400 text-center truncate w-full">{gen.title}</p>
+                <p className="text-[10px] text-gray-600">{gen.time}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">No generations yet.</p>
+        )}
       </div>
     </div>
   );
