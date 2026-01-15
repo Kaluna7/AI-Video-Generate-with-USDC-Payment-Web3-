@@ -59,11 +59,12 @@ export default function PromptBarsStack({ items }) {
       const init = () => {
         destroy();
 
-        // Make the list a fixed-height stage and absolutely center every card in the same slot.
-        // This guarantees card #1/#2/#3 are perfectly aligned.
-        const headerOffset = 96; // matches ScrollTrigger start 'top top+=96'
+        // Stage: all cards are absolutely positioned in the same centered slot.
+        // Then we "stack" non-active cards with a small Y offset so it matches the reference.
         const firstRect = cards[0].getBoundingClientRect();
-        const stageHeight = Math.max(1, Math.ceil(firstRect.height));
+        const stackGapY = 88;
+        const maxVisibleBehind = Math.min(2, Math.max(0, cards.length - 1));
+        const stageHeight = Math.max(1, Math.ceil(firstRect.height + maxVisibleBehind * stackGapY));
 
         gsap.set(listRef.current, { height: stageHeight });
 
@@ -75,17 +76,44 @@ export default function PromptBarsStack({ items }) {
           right: 0,
           yPercent: -50,
           opacity: 0,
-          scale: 0.98,
+          scale: 0.96,
           zIndex: 1,
         });
-        gsap.set(cards[0], { opacity: 1, scale: 1, zIndex: 3 });
 
-        const stepScroll = Math.min(Math.max(window.innerHeight * 0.28, 240), 320);
+        const renderStack = (activeIndex) => {
+          cards.forEach((el, i) => {
+            const rel = i - activeIndex;
+            const absRel = Math.abs(rel);
+
+            // Keep a couple of cards visible behind for the "stack" look
+            const isVisible =
+              i === activeIndex ||
+              (rel > 0 && rel <= maxVisibleBehind) ||
+              (rel < 0 && absRel <= maxVisibleBehind);
+
+            const y = rel * stackGapY;
+            const opacity = i === activeIndex ? 1 : Math.max(0.18, 1 - absRel * 0.35);
+            const scale = i === activeIndex ? 1 : Math.max(0.9, 1 - absRel * 0.05);
+            const zIndex = 50 - absRel;
+
+            gsap.to(el, {
+              y,
+              opacity: isVisible ? opacity : 0,
+              scale: isVisible ? scale : 0.96,
+              zIndex,
+              duration: 0.25,
+              overwrite: true,
+              ease: 'power2.out',
+            });
+          });
+        };
+
+        // Initial state
+        renderStack(0);
+
+        const stepScroll = Math.min(Math.max(window.innerHeight * 0.35, 320), 520);
         const scrollDistance = Math.max(1, (cards.length - 1) * stepScroll);
-
-        const tl = gsap.timeline({
-          defaults: { duration: 1, ease: 'none' },
-        });
+        let lastActive = 0;
 
         ScrollTrigger.create({
           id: 'prompt-bars-stack',
@@ -97,21 +125,14 @@ export default function PromptBarsStack({ items }) {
           anticipatePin: 1,
           pinSpacing: true,
           invalidateOnRefresh: true,
-          animation: tl,
+          onUpdate: (self) => {
+            const activeIndex = Math.round(self.progress * (cards.length - 1));
+            if (activeIndex !== lastActive) {
+              lastActive = activeIndex;
+              renderStack(activeIndex);
+            }
+          },
         });
-
-        // Step-based crossfade: each step fades out the current card and fades in the next.
-        // All cards stay in the exact same centered slot.
-        for (let i = 0; i < cards.length - 1; i += 1) {
-          const t = i;
-          const current = cards[i];
-          const next = cards[i + 1];
-
-          tl.set(next, { zIndex: 3 }, t);
-          tl.set(current, { zIndex: 2 }, t);
-          tl.to(current, { opacity: 0, scale: 0.98 }, t);
-          tl.to(next, { opacity: 1, scale: 1 }, t);
-        }
       };
 
       const timeoutId = setTimeout(() => {
