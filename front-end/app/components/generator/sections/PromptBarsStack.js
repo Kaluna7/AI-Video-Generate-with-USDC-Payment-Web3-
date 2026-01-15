@@ -36,6 +36,7 @@ function useDesktopStackingEnabled() {
 export default function PromptBarsStack({ items }) {
   const enabled = useDesktopStackingEnabled();
   const containerRef = useRef(null);
+  const listRef = useRef(null);
   const cardsRef = useRef([]);
 
   const stableItems = useMemo(() => items || [], [items]);
@@ -43,6 +44,7 @@ export default function PromptBarsStack({ items }) {
   useEffect(() => {
     if (!enabled) return undefined;
     if (!containerRef.current) return undefined;
+    if (!listRef.current) return undefined;
 
     const cards = cardsRef.current.filter(Boolean);
     if (cards.length < 2) return undefined;
@@ -57,24 +59,28 @@ export default function PromptBarsStack({ items }) {
       const init = () => {
         destroy();
 
-        // Reset to "normal list" first (matches reference)
-        gsap.set(cards, { clearProps: 'transform,opacity' });
-        gsap.set(cards, { opacity: 1, scale: 1, y: 0 });
-        gsap.set(cards, { position: 'relative', zIndex: 1 });
-
-        // Measure list positions and compute how much each card must move to align to
-        // a stable "active slot" centered in the viewport.
+        // Make the list a fixed-height stage and absolutely center every card in the same slot.
+        // This guarantees card #1/#2/#3 are perfectly aligned.
         const headerOffset = 96; // matches ScrollTrigger start 'top top+=96'
         const firstRect = cards[0].getBoundingClientRect();
-        // Center within the usable viewport area (below the fixed header)
-        const usableHeight = Math.max(1, window.innerHeight - headerOffset);
-        const activeSlotTop = Math.round(headerOffset + usableHeight * 0.5 - firstRect.height * 0.5);
-        const deltas = cards.map((el) => el.getBoundingClientRect().top - activeSlotTop);
+        const stageHeight = Math.max(1, Math.ceil(firstRect.height));
 
-        const stackGapY = 88;
-        // Reduce pinned scroll distance per step so card #3 doesn't feel "too far" to reach.
-        // Keep it consistent across steps (1->2 and 2->3 feel the same).
-        const stepScroll = Math.min(Math.max(window.innerHeight * 0.32, 260), 360);
+        gsap.set(listRef.current, { height: stageHeight });
+
+        gsap.set(cards, { clearProps: 'transform,opacity' });
+        gsap.set(cards, {
+          position: 'absolute',
+          top: '50%',
+          left: 0,
+          right: 0,
+          yPercent: -50,
+          opacity: 0,
+          scale: 0.98,
+          zIndex: 1,
+        });
+        gsap.set(cards[0], { opacity: 1, scale: 1, zIndex: 3 });
+
+        const stepScroll = Math.min(Math.max(window.innerHeight * 0.28, 240), 320);
         const scrollDistance = Math.max(1, (cards.length - 1) * stepScroll);
 
         const tl = gsap.timeline({
@@ -94,29 +100,17 @@ export default function PromptBarsStack({ items }) {
           animation: tl,
         });
 
-        // Step-based: each step promotes the next card, stacks previous cards above it.
-        for (let activeIndex = 0; activeIndex < cards.length - 1; activeIndex += 1) {
-          const t = activeIndex;
-          const nextIndex = activeIndex + 1;
+        // Step-based crossfade: each step fades out the current card and fades in the next.
+        // All cards stay in the exact same centered slot.
+        for (let i = 0; i < cards.length - 1; i += 1) {
+          const t = i;
+          const current = cards[i];
+          const next = cards[i + 1];
 
-          // Bring next card into the "active slot" (where card 1 started)
-          tl.set(cards[nextIndex], { zIndex: 30 }, t);
-          tl.to(cards[nextIndex], { y: -deltas[nextIndex], opacity: 1, scale: 1 }, t);
-
-          // Stack previous cards above the active slot
-          for (let i = 0; i <= activeIndex; i += 1) {
-            const stackPos = activeIndex - i + 1;
-            tl.set(cards[i], { zIndex: 30 - stackPos }, t);
-            tl.to(
-              cards[i],
-              {
-                y: -deltas[i] - stackPos * stackGapY,
-                opacity: Math.max(0.25, 1 - stackPos * 0.22),
-                scale: Math.max(0.78, 1 - stackPos * 0.08),
-              },
-              t
-            );
-          }
+          tl.set(next, { zIndex: 3 }, t);
+          tl.set(current, { zIndex: 2 }, t);
+          tl.to(current, { opacity: 0, scale: 0.98 }, t);
+          tl.to(next, { opacity: 1, scale: 1 }, t);
         }
       };
 
@@ -151,7 +145,7 @@ export default function PromptBarsStack({ items }) {
   return (
     <section ref={containerRef} className="relative">
       {/* Normal list layout (always correct). GSAP only transforms cards on desktop. */}
-      <div className="space-y-10">
+      <div ref={listRef} className={enabled ? 'relative' : 'space-y-10'}>
         {stableItems.map((item, idx) => (
           <div key={item.id} ref={(el) => (cardsRef.current[idx] = el)}>
             <PromptBarCard item={item} />
