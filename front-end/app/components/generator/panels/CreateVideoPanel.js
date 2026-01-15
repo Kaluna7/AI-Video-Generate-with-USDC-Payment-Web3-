@@ -154,7 +154,6 @@ export default function CreateVideoPanel({
                 className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
                 placeholder="veo (or leave empty for none)"
               />
-              <p className="text-[11px] text-gray-500 mt-2">Leave empty to disable watermark.</p>
             </div>
           </div>
         </div>
