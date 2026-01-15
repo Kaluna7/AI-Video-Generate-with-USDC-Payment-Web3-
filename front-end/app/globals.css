@@ -111,3 +111,40 @@ html {
 .hide-scrollbar::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Opera */
 }
+
+/* ==============================
+   Auto sliding text (marquee)
+   ============================== */
+
+@keyframes ps-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.ps-marquee {
+  position: relative;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+}
+
+.ps-marquee__track {
+  display: flex;
+  width: max-content;
+  gap: 1.25rem;
+  animation: ps-marquee 22s linear infinite;
+}
+
+.ps-marquee:hover .ps-marquee__track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-marquee__track {
+    animation: none;
+  }
+}

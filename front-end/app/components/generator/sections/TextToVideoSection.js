@@ -50,6 +50,45 @@ export default function TextToVideoSection() {
           <span className="text-purple-400">From Idea to Impact — </span>
           <span className="text-orange-400">AI Video Generation Without Limits</span>
         </h2>
+        <div className="mt-6 ps-marquee">
+          <div className="ps-marquee__track">
+            <div className="flex items-center gap-5">
+              <span className="text-sm text-gray-300 whitespace-nowrap">Text to Video</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Veo 3.1</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Cinematic</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Anime</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Portrait 9:16</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">HD</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Auto Aspect</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Fast Generation</span>
+            </div>
+            {/* duplicate for seamless loop */}
+            <div className="flex items-center gap-5" aria-hidden="true">
+              <span className="text-sm text-gray-300 whitespace-nowrap">Text to Video</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Veo 3.1</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Cinematic</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Anime</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Portrait 9:16</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">HD</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Auto Aspect</span>
+              <span className="text-sm text-gray-500">•</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Fast Generation</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <PromptBarsStack items={promptingBars} />
