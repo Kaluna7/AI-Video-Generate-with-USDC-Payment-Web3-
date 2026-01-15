@@ -164,96 +164,12 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
         "generationConfig": {
             "temperature": 0.7,
             # Higher limit to reduce mid-sentence truncation.
-            "maxOutputTokens": 1024,
+            "maxOutputTokens": 1536,
         },
     }
 
-    # Google Generative Language API supports API key either via query param or x-goog-api-key header.
-    # We'll use header to avoid logging the key in URLs.
-    #
-    # Important: some newer models appear in AI Studio but are not available on v1beta for generateContent.
-    # So we try BOTH API versions (v1beta then v1) and fall back across common flash/pro models.
-    candidates = [
-        _gemini_model(),
-        "gemini-3-flash",
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-    ]
-    api_versions = ["v1beta", "v1"]
-
-    last_resp = None
-    last_model = None
-    last_ver = None
-
-    for ver in api_versions:
-        for m in candidates:
-            last_model = m
-            last_ver = ver
-            url = f"https://generativelanguage.googleapis.com/{ver}/models/{m}:generateContent"
-            resp = requests.post(
-                url,
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": _gemini_api_key(),
-                },
-                json=payload,
-                timeout=60,
-            )
-            last_resp = resp
-            if resp.status_code < 400:
-                break
-            # If model isn't found / doesn't support generateContent on this API version, try next candidate.
-            if resp.status_code == 404 and ("not found" in (resp.text or "").lower() or "not_supported" in (resp.text or "").lower() or "NOT_FOUND" in (resp.text or "")):
-                continue
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gemini error ({resp.status_code}): {resp.text}")
-        if last_resp and last_resp.status_code < 400:
-            break
-
-    if not last_resp or last_resp.status_code >= 400:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Gemini model not supported for generateContent. Last tried '{last_model}' on {last_ver}: {last_resp.text if last_resp else ''}",
-        )
-
-    data = last_resp.json() if last_resp.content else {}
-    try:
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gemini response missing text: {data}")
-
-    out = (text or "").strip()
-    # Safety: enforce length and single-line-ish output.
-    out = " ".join(out.split())
-
-    # If Gemini returned an incomplete prompt (common when it hits internal limits),
-    # do a quick repair pass.
-    if out.endswith("-") or (out and out[-1] not in ".!?"):
-        repair_payload = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [
-                        {
-                            "text": (
-                                "Fix and complete this prompt so it does NOT end mid-word or mid-sentence. "
-                                "Keep it story-driven (beginning→middle→ending), keep the same vibe, and return ONE single paragraph only:\n\n"
-                                f"{out}"
-                            )
-                        }
-                    ],
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.4,
-                "maxOutputTokens": 256,
-            },
-        }
-
-        # Try the same API-version/model fallbacks as above for the repair call.
-        candidates2 = [
+    def _call_gemini_generate(content_payload: dict) -> str:
+        candidates = [
             _gemini_model(),
             "gemini-3-flash",
             "gemini-2.5-flash",
@@ -262,38 +178,102 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
             "gemini-1.5-flash",
             "gemini-1.5-pro",
         ]
-        api_versions2 = ["v1beta", "v1"]
-        repaired_resp = None
-        for ver in api_versions2:
-            for m in candidates2:
-                url2 = f"https://generativelanguage.googleapis.com/{ver}/models/{m}:generateContent"
-                r2 = requests.post(
-                    url2,
+        api_versions = ["v1beta", "v1"]
+
+        last_resp = None
+        last_model = None
+        last_ver = None
+
+        for ver in api_versions:
+            for m in candidates:
+                last_model = m
+                last_ver = ver
+                url = f"https://generativelanguage.googleapis.com/{ver}/models/{m}:generateContent"
+                resp = requests.post(
+                    url,
                     headers={
                         "Content-Type": "application/json",
                         "x-goog-api-key": _gemini_api_key(),
                     },
-                    json=repair_payload,
+                    json=content_payload,
                     timeout=60,
                 )
-                if r2.status_code < 400:
-                    repaired_resp = r2
+                last_resp = resp
+                if resp.status_code < 400:
                     break
-                if r2.status_code == 404 and ("not found" in (r2.text or "").lower() or "not_supported" in (r2.text or "").lower() or "NOT_FOUND" in (r2.text or "")):
+                # If model isn't found / doesn't support generateContent on this API version, try next candidate.
+                if resp.status_code == 404 and (
+                    "not found" in (resp.text or "").lower()
+                    or "not_supported" in (resp.text or "").lower()
+                    or "NOT_FOUND" in (resp.text or "")
+                ):
                     continue
-                break
-            if repaired_resp:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gemini error ({resp.status_code}): {resp.text}")
+            if last_resp and last_resp.status_code < 400:
                 break
 
-        if repaired_resp and repaired_resp.content:
-            try:
-                repaired_data = repaired_resp.json()
-                repaired_text = repaired_data["candidates"][0]["content"]["parts"][0]["text"]
-                repaired_out = " ".join((repaired_text or "").strip().split())
-                if repaired_out:
-                    out = repaired_out
-            except Exception:
-                pass
+        if not last_resp or last_resp.status_code >= 400:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Gemini model not supported for generateContent. Last tried '{last_model}' on {last_ver}: {last_resp.text if last_resp else ''}",
+            )
+
+        data = last_resp.json() if last_resp.content else {}
+        try:
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gemini response missing text: {data}")
+        return (text or "").strip()
+
+    # Google Generative Language API supports API key either via query param or x-goog-api-key header.
+    # We'll use header to avoid logging the key in URLs.
+    #
+    # Important: some newer models appear in AI Studio but are not available on v1beta for generateContent.
+    # So we try BOTH API versions (v1beta then v1) and fall back across common flash/pro models.
+    out = _call_gemini_generate(payload)
+    # Safety: enforce length and single-line-ish output.
+    out = " ".join(out.split())
+
+    def _needs_repair(s: str) -> bool:
+        if not s:
+            return True
+        if s.endswith("-"):
+            return True
+        # ends with comma/colon/semicolon -> likely unfinished
+        if s[-1] in ",:;":
+            return True
+        # If it doesn't end with sentence punctuation, treat as incomplete
+        if s[-1] not in ".!?":
+            return True
+        # Too short to be "storytelling"
+        if len(s) < 220:
+            return True
+        return False
+
+    if _needs_repair(out):
+        repair_payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": (
+                                "Rewrite this into ONE complete, detailed, story-driven prompt (4–6 full sentences). "
+                                "Do not mention copyrighted IP names. Keep the same vibe. Do NOT end mid-word or mid-sentence:\n\n"
+                                f"{out}"
+                            )
+                        }
+                    ],
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.5,
+                "maxOutputTokens": 512,
+            },
+        }
+        repaired_out = " ".join(_call_gemini_generate(repair_payload).split())
+        if repaired_out:
+            out = repaired_out
 
     # Enforce max length without cutting mid-word/sentence.
     if len(out) > 1200:
