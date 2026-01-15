@@ -21,6 +21,9 @@ CIRCLE_CLIENT_KEY=PASTE_YOUR_CLIENT_KEY_HERE
 GEMINI_API_KEY=PASTE_YOUR_GEMINI_API_KEY_HERE
 # Model name (example: gemini-3-flash, gemini-2.5-flash, gemini-1.5-flash)
 GEMINI_MODEL=gemini-3-flash
+# Optional: best-effort Google Search grounding (if supported by your model/account).
+# If unsupported, backend will automatically fall back to non-search generation.
+GEMINI_USE_GOOGLE_SEARCH=false
 
 # Google OAuth (Sign in with Google)
 # Create these in Google Cloud Console (OAuth client: Web application)

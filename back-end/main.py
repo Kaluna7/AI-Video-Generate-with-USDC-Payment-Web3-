@@ -153,9 +153,37 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
         "Do NOT end mid-sentence.\n"
         "Keep it under 1200 characters.\n"
     )
+    idea_lc = idea.lower()
+
+    # If user references Naruto-like concepts, keep the vibe but rewrite to original descriptors.
+    naruto_like = any(
+        k in idea_lc
+        for k in (
+            "naruto",
+            "sharingan",
+            "rinnegan",
+            "uchiha",
+            "uzumaki",
+            "akatsuki",
+            "konoha",
+            "hokage",
+            "jutsu",
+        )
+    )
+
     user = f"Short idea: {idea}"
     if base:
         user += f"\nExisting prompt (optional context): {base}"
+
+    if naruto_like:
+        user += (
+            "\n\nStyle target (important): anime-inspired shinobi duel reminiscent of classic ninja anime.\n"
+            "Include: chakra aura, hand seals, high-speed taijutsu, jutsu impacts on environment, dramatic stakes, and a mini-arc.\n"
+            "Rewrite any named/copyrighted terms into original descriptors.\n"
+            "Eye power A (instead of named ability): scarlet spiral-pattern iris with illusion/precision techniques.\n"
+            "Eye power B (instead of named ability): violet concentric-ring iris with gravity/pull/repulsion techniques.\n"
+            "Avoid generic 'wizard/mage' framing—make it ninja/shinobi.\n"
+        )
 
     payload = {
         "contents": [
@@ -180,6 +208,8 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
         ]
         api_versions = ["v1beta", "v1"]
 
+        use_search = (os.getenv("GEMINI_USE_GOOGLE_SEARCH") or "").strip().lower() in ("1", "true", "yes", "y", "on")
+
         last_resp = None
         last_model = None
         last_ver = None
@@ -189,15 +219,36 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
                 last_model = m
                 last_ver = ver
                 url = f"https://generativelanguage.googleapis.com/{ver}/models/{m}:generateContent"
+
+                # Best-effort Google Search grounding (if supported by the model/account).
+                payload_to_send = dict(content_payload)
+                if use_search:
+                    payload_to_send["tools"] = [{"google_search": {}}]
+
                 resp = requests.post(
                     url,
                     headers={
                         "Content-Type": "application/json",
                         "x-goog-api-key": _gemini_api_key(),
                     },
-                    json=content_payload,
+                    json=payload_to_send,
                     timeout=60,
                 )
+
+                # If grounding tools are not supported, retry once without tools.
+                if use_search and resp.status_code in (400, 404):
+                    txt = (resp.text or "").lower()
+                    if "tools" in txt or "google_search" in txt or "not supported" in txt or "not found" in txt:
+                        resp = requests.post(
+                            url,
+                            headers={
+                                "Content-Type": "application/json",
+                                "x-goog-api-key": _gemini_api_key(),
+                            },
+                            json=content_payload,
+                            timeout=60,
+                        )
+
                 last_resp = resp
                 if resp.status_code < 400:
                     break
