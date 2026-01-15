@@ -123,8 +123,9 @@ def _gemini_api_key() -> str:
 
 
 def _gemini_model() -> str:
-    # User requested gemini-3-flash. Allow override via env.
-    v = os.getenv("GEMINI_MODEL") or "gemini-3-flash"
+    # Default to a widely supported "flash" model for generateContent.
+    # Allow override via env.
+    v = os.getenv("GEMINI_MODEL") or "gemini-1.5-flash"
     return v.strip().strip('"').strip("'")
 
 
@@ -161,20 +162,38 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
 
     # Google Generative Language API supports API key either via query param or x-goog-api-key header.
     # We'll use header to avoid logging the key in URLs.
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{_gemini_model()}:generateContent"
-    resp = requests.post(
-        url,
-        headers={
-            "Content-Type": "application/json",
-            "x-goog-api-key": _gemini_api_key(),
-        },
-        json=payload,
-        timeout=60,
-    )
-    if resp.status_code >= 400:
+    # Try configured model first; if it's not supported/available, fall back to known flash models.
+    candidates = [_gemini_model(), "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    last_resp = None
+    last_model = None
+    for m in candidates:
+        last_model = m
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent"
+        resp = requests.post(
+            url,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": _gemini_api_key(),
+            },
+            json=payload,
+            timeout=60,
+        )
+        last_resp = resp
+        # Success
+        if resp.status_code < 400:
+            break
+        # If model not found / not supported, try next. Otherwise stop early.
+        if resp.status_code == 404 and ("is not found" in (resp.text or "") or "NOT_FOUND" in (resp.text or "")):
+            continue
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gemini error ({resp.status_code}): {resp.text}")
 
-    data = resp.json() if resp.content else {}
+    if not last_resp or last_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Gemini model not supported. Last tried '{last_model}': {last_resp.text if last_resp else ''}",
+        )
+
+    data = last_resp.json() if last_resp.content else {}
     try:
         text = data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception:

@@ -19,8 +19,8 @@ CIRCLE_CLIENT_KEY=PASTE_YOUR_CLIENT_KEY_HERE
 # Gemini (Enhance with AI)
 # Put your Google AI Studio / Gemini API key here (server-side only).
 GEMINI_API_KEY=PASTE_YOUR_GEMINI_API_KEY_HERE
-# Model name (user requested gemini-3-flash)
-GEMINI_MODEL=gemini-3-flash
+# Model name (must be supported by generateContent; recommended default)
+GEMINI_MODEL=gemini-1.5-flash
 
 # Google OAuth (Sign in with Google)
 # Create these in Google Cloud Console (OAuth client: Web application)
