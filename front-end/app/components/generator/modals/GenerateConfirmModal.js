@@ -61,7 +61,7 @@ export default function GenerateConfirmModal({
               <div className="text-center">
                 <p className="text-sm text-gray-400 mb-2">Generation Cost</p>
                 <div className="flex items-center justify-center gap-2">
-                  <Image src="/assets/images/coin.png" alt="Coin" width={28} height={28} />
+                  <Image src="/assets/images/coin.svg" alt="Coin" width={28} height={28} />
                   <p className="text-3xl font-bold gradient-text mb-1">{Math.floor(cost)} coins</p>
                 </div>
                 <p className="text-xs text-gray-400">Coins are deducted from your in-app balance</p>

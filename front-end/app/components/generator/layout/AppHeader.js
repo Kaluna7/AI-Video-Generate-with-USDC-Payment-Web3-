@@ -191,7 +191,7 @@ export default function AppHeader() {
               className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors"
               title="Top up coins"
             >
-              <Image src="/assets/images/coin.png" alt="Coin" width={16} height={16} />
+              <Image src="/assets/images/coin.svg" alt="Coin" width={16} height={16} />
               <span className="text-sm font-semibold text-white">{Number(coinBalance || 0)}</span>
               <span className="text-xs text-gray-400 hidden sm:inline">Coins</span>
               <span className="text-xs text-gray-400 sm:hidden">C</span>
