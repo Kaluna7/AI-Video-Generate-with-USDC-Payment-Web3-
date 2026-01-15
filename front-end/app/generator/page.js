@@ -22,7 +22,7 @@ export default function GeneratorPage() {
   const walletAddress = useAuthStore((state) => state.walletAddress);
   const [currentView, setCurrentView] = useState('home'); // 'home', 'text-to-video', 'image-to-video'
   const [activeTab, setActiveTab] = useState('text');
-  const [prompt, setPrompt] = useState('A cinematic drone shot flying over a futuristic city at sunset with neon lights...');
+  const [prompt, setPrompt] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('Cinematic');
   // Veo 3.1 params
   const [veoModel, setVeoModel] = useState('veo3-fast'); // veo3-fast | veo3
