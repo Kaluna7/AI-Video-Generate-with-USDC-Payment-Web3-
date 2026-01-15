@@ -302,12 +302,21 @@ def _veo3_headers() -> Dict[str, str]:
             detail="VEO3_API_KEY is not set in environment",
         )
     # Veo 3.1 docs use: Authorization: Bearer YOUR_API_KEY
-    header_name = (os.getenv("VEO3_AUTH_HEADER_NAME") or "Authorization").strip()
-    header_value = key
-    if header_name.lower() == "authorization":
-        # Support both: raw key or already prefixed "Bearer ..."
-        header_value = key if key.lower().startswith("bearer ") else f"Bearer {key}"
-    return {header_name: header_value, "Content-Type": "application/json"}
+    auth_value = key if key.lower().startswith("bearer ") else f"Bearer {key}"
+
+    # Always include Authorization so veo3api.com accepts the request,
+    # even if the user configured a different header name by mistake.
+    headers: Dict[str, str] = {
+        "Authorization": auth_value,
+        "Content-Type": "application/json",
+    }
+
+    # Optional: also send a custom header if provided (harmless for veo3api.com).
+    extra_header_name = (os.getenv("VEO3_AUTH_HEADER_NAME") or "").strip()
+    if extra_header_name and extra_header_name.lower() != "authorization":
+        headers[extra_header_name] = key
+
+    return headers
 
 
 def _veo3_create_task(prompt: str, duration_seconds: int) -> Dict[str, Any]:
