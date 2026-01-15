@@ -57,6 +57,32 @@ export const usdcToBaseUnits = (amountUsdc) => {
   return whole * 1000000000000000000n + BigInt(frac || '0');
 };
 
+const getChainId = async () => {
+  if (typeof window === 'undefined' || !window.ethereum) throw new Error('MetaMask not found');
+  return await window.ethereum.request({ method: 'eth_chainId' });
+};
+
+const getNativeBalance = async (address) => {
+  if (typeof window === 'undefined' || !window.ethereum) throw new Error('MetaMask not found');
+  const balHex = await window.ethereum.request({
+    method: 'eth_getBalance',
+    params: [address, 'latest'],
+  });
+  return BigInt(balHex);
+};
+
+const estimateTxCost = async ({ from, to, value }) => {
+  if (typeof window === 'undefined' || !window.ethereum) throw new Error('MetaMask not found');
+  const gasHex = await window.ethereum.request({
+    method: 'eth_estimateGas',
+    params: [{ from, to, value: toHex(value) }],
+  });
+  const gasPriceHex = await window.ethereum.request({ method: 'eth_gasPrice' });
+  const gas = BigInt(gasHex);
+  const gasPrice = BigInt(gasPriceHex);
+  return { gas, gasPrice, fee: gas * gasPrice };
+};
+
 export const sendArcNativeUsdcPayment = async ({ from, to, amountUsdc }) => {
   if (typeof window === 'undefined' || !window.ethereum) {
     throw new Error('MetaMask not found');
@@ -68,6 +94,19 @@ export const sendArcNativeUsdcPayment = async ({ from, to, amountUsdc }) => {
 
   const value = usdcToBaseUnits(amountUsdc);
   if (value <= 0n) throw new Error('Invalid amount');
+
+  // Preflight checks for clearer errors than wallet "request failed"
+  const chainId = await getChainId();
+  if (String(chainId).toLowerCase() !== ARC_TESTNET.chainIdHex.toLowerCase()) {
+    throw new Error('Wrong network: please switch to Arc Testnet');
+  }
+
+  const balance = await getNativeBalance(from);
+  const { fee } = await estimateTxCost({ from, to, value });
+  const total = value + fee;
+  if (balance < total) {
+    throw new Error('Insufficient USDC for amount + gas fee (please faucet more)');
+  }
 
   const txHash = await window.ethereum.request({
     method: 'eth_sendTransaction',
