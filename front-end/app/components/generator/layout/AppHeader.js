@@ -16,7 +16,8 @@ const ARC_TESTNET = {
   rpcUrls: ['https://rpc.testnet.arc.network'],
   blockExplorerUrls: ['https://testnet.arcscan.app'],
   // Arc uses USDC as native gas.
-  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+  // Arc testnet returns native balance in 18-decimal base units (wei-like).
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
 };
 
 const formatUnits = (value, decimals) => {

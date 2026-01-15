@@ -5,7 +5,8 @@ export const ARC_TESTNET = {
   chainName: 'Arc Testnet',
   rpcUrls: ['https://rpc.testnet.arc.network'],
   blockExplorerUrls: ['https://testnet.arcscan.app'],
-  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+  // Arc testnet returns native balance in 18-decimal base units (wei-like).
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
 };
 
 const toHex = (n) => {
@@ -47,13 +48,13 @@ export const ensureArcTestnet = async () => {
 };
 
 export const usdcToBaseUnits = (amountUsdc) => {
-  // Convert decimal USDC -> integer base units (6 decimals) safely
+  // Convert decimal amount -> integer base units (18 decimals) safely
   const s = String(amountUsdc ?? '').trim();
   if (!s) return 0n;
   const [wholeRaw, fracRaw = ''] = s.split('.');
   const whole = BigInt(wholeRaw || '0');
-  const frac = fracRaw.padEnd(6, '0').slice(0, 6);
-  return whole * 1000000n + BigInt(frac || '0');
+  const frac = fracRaw.padEnd(18, '0').slice(0, 18);
+  return whole * 1000000000000000000n + BigInt(frac || '0');
 };
 
 export const sendArcNativeUsdcPayment = async ({ from, to, amountUsdc }) => {
