@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "V3 VideoGen AI - Autonomous Video Generation Platform",
+  title: "PrimeStudio - Autonomous Video Generation Platform",
   description: "Generate stunning AI videos from text or images. Pay per generation with USDC. No subscriptions, no middlemen. Pure Web3 magic.",
 };
 
