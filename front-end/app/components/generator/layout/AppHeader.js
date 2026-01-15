@@ -1,41 +1,117 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '../../../store/authStore';
+
+const ARC_TESTNET_FAUCET_URL = 'https://faucet.circle.com';
+const ARC_TESTNET = {
+  chainIdDec: 5042002,
+  chainIdHex: '0x4cef52',
+  chainName: 'Arc Testnet',
+  rpcUrls: ['https://rpc.testnet.arc.network'],
+  blockExplorerUrls: ['https://testnet.arcscan.app'],
+  // Arc uses USDC as native gas.
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 6 },
+};
+
+const formatUnits = (value, decimals) => {
+  try {
+    const v = BigInt(value);
+    const d = BigInt(10) ** BigInt(decimals);
+    const whole = v / d;
+    const frac = v % d;
+    const fracStr = frac.toString().padStart(decimals, '0').slice(0, 2); // show 2 decimals
+    return `${whole.toString()}.${fracStr}`;
+  } catch {
+    return '0.00';
+  }
+};
 
 export default function AppHeader() {
   const usdcBalance = useAuthStore((state) => state.usdcBalance);
   const walletAddress = useAuthStore((state) => state.walletAddress);
+  const setUsdcBalance = useAuthStore((state) => state.setUsdcBalance);
   const setWalletAddress = useAuthStore((state) => state.setWalletAddress);
   const [isConnecting, setIsConnecting] = useState(false);
-  const ARC_TESTNET_FAUCET_URL = 'https://faucet.circle.com';
+
+  const ensureArcTestnet = useCallback(async () => {
+    if (!window?.ethereum) throw new Error('MetaMask not found');
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: ARC_TESTNET.chainIdHex }],
+      });
+    } catch (e) {
+      // 4902 = unknown chain, so add then switch
+      if (e?.code === 4902) {
+        await window.ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [
+            {
+              chainId: ARC_TESTNET.chainIdHex,
+              chainName: ARC_TESTNET.chainName,
+              rpcUrls: ARC_TESTNET.rpcUrls,
+              blockExplorerUrls: ARC_TESTNET.blockExplorerUrls,
+              nativeCurrency: ARC_TESTNET.nativeCurrency,
+            },
+          ],
+        });
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: ARC_TESTNET.chainIdHex }],
+        });
+      } else {
+        throw e;
+      }
+    }
+  }, []);
+
+  const refreshArcBalance = useCallback(async (address) => {
+    if (!window?.ethereum || !address) return;
+    try {
+      const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+      if (chainId?.toLowerCase() !== ARC_TESTNET.chainIdHex.toLowerCase()) return;
+      const balHex = await window.ethereum.request({
+        method: 'eth_getBalance',
+        params: [address, 'latest'],
+      });
+      // Balance is returned as hex. Convert & format as "USDC-like" 6 decimals.
+      const balBig = BigInt(balHex);
+      const formatted = formatUnits(balBig, ARC_TESTNET.nativeCurrency.decimals);
+      const asFloat = Number.parseFloat(formatted);
+      if (!Number.isNaN(asFloat)) setUsdcBalance(asFloat);
+    } catch {
+      // no-op
+    }
+  }, [setUsdcBalance]);
 
   const handleConnectWallet = async () => {
     setIsConnecting(true);
     
-    // Simulate wallet connection (replace with actual Web3 wallet integration)
-    // For now, we'll simulate a MetaMask-like connection
     try {
-      // Check if MetaMask is installed (for future integration)
-      if (typeof window !== 'undefined' && window.ethereum) {
-        // Request account access
-        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        if (accounts && accounts.length > 0) {
-          const address = accounts[0];
-          setWalletAddress(address);
-          
-          // Fetch USDC balance from wallet (for future Web3 integration)
-          // For now, keep existing balance
-        }
-      } else {
-        // Simulate wallet connection for demo
-        const mockAddress = `0x${Math.random().toString(16).substr(2, 40)}`;
-        setWalletAddress(mockAddress);
+      if (typeof window === 'undefined' || !window.ethereum) {
+        alert('MetaMask not found. Please install MetaMask to connect your wallet.');
+        return;
       }
+
+      // 1) Connect wallet
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      if (!accounts || accounts.length === 0) {
+        alert('No wallet account selected.');
+        return;
+      }
+      const address = accounts[0];
+
+      // 2) Switch/Add Arc Testnet
+      await ensureArcTestnet();
+
+      // 3) Store address + refresh balance
+      setWalletAddress(address);
+      await refreshArcBalance(address);
     } catch (error) {
       console.error('Error connecting wallet:', error);
-      alert('Failed to connect wallet. Please make sure MetaMask is installed.');
+      alert('Failed to connect wallet / switch network. Please check MetaMask and try again.');
     } finally {
       setIsConnecting(false);
     }
@@ -50,6 +126,27 @@ export default function AppHeader() {
     if (!address) return '';
     return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.ethereum) return;
+
+    const onAccountsChanged = (accounts) => {
+      const next = accounts?.[0] || null;
+      setWalletAddress(next);
+      if (next) refreshArcBalance(next);
+    };
+
+    const onChainChanged = () => {
+      if (walletAddress) refreshArcBalance(walletAddress);
+    };
+
+    window.ethereum.on?.('accountsChanged', onAccountsChanged);
+    window.ethereum.on?.('chainChanged', onChainChanged);
+    return () => {
+      window.ethereum.removeListener?.('accountsChanged', onAccountsChanged);
+      window.ethereum.removeListener?.('chainChanged', onChainChanged);
+    };
+  }, [walletAddress, setWalletAddress, refreshArcBalance]);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-b border-gray-800">
@@ -80,6 +177,17 @@ export default function AppHeader() {
                 <span className="text-xs text-white font-mono hidden sm:inline">{formatAddress(walletAddress)}</span>
                 <span className="text-xs text-white font-mono sm:hidden">{formatAddress(walletAddress)}</span>
                 <button
+                  type="button"
+                  onClick={() => refreshArcBalance(walletAddress)}
+                  className="ml-1 text-gray-400 hover:text-white transition-colors"
+                  title="Refresh Arc testnet balance"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v6h6M20 20v-6h-6" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 8a8 8 0 00-14.828-2M4 16a8 8 0 0014.828 2" />
+                  </svg>
+                </button>
+                <button
                   onClick={handleDisconnectWallet}
                   className="ml-1 text-gray-400 hover:text-red-400 transition-colors"
                   title="Disconnect Wallet"
@@ -108,7 +216,7 @@ export default function AppHeader() {
                     <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
-                    <span className="text-xs text-gray-300 hidden sm:inline">Connect Wallet</span>
+                    <span className="text-xs text-gray-300 hidden sm:inline">Connect (Arc Testnet)</span>
                     <span className="text-xs text-gray-300 sm:hidden">Connect</span>
                   </>
                 )}
