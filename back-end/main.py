@@ -163,7 +163,8 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
         ],
         "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 768,
+            # Higher limit to reduce mid-sentence truncation.
+            "maxOutputTokens": 1024,
         },
     }
 
@@ -226,8 +227,85 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
     out = (text or "").strip()
     # Safety: enforce length and single-line-ish output.
     out = " ".join(out.split())
+
+    # If Gemini returned an incomplete prompt (common when it hits internal limits),
+    # do a quick repair pass.
+    if out.endswith("-") or (out and out[-1] not in ".!?"):
+        repair_payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": (
+                                "Fix and complete this prompt so it does NOT end mid-word or mid-sentence. "
+                                "Keep it story-driven (beginning→middle→ending), keep the same vibe, and return ONE single paragraph only:\n\n"
+                                f"{out}"
+                            )
+                        }
+                    ],
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.4,
+                "maxOutputTokens": 256,
+            },
+        }
+
+        # Try the same API-version/model fallbacks as above for the repair call.
+        candidates2 = [
+            _gemini_model(),
+            "gemini-3-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+        ]
+        api_versions2 = ["v1beta", "v1"]
+        repaired_resp = None
+        for ver in api_versions2:
+            for m in candidates2:
+                url2 = f"https://generativelanguage.googleapis.com/{ver}/models/{m}:generateContent"
+                r2 = requests.post(
+                    url2,
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": _gemini_api_key(),
+                    },
+                    json=repair_payload,
+                    timeout=60,
+                )
+                if r2.status_code < 400:
+                    repaired_resp = r2
+                    break
+                if r2.status_code == 404 and ("not found" in (r2.text or "").lower() or "not_supported" in (r2.text or "").lower() or "NOT_FOUND" in (r2.text or "")):
+                    continue
+                break
+            if repaired_resp:
+                break
+
+        if repaired_resp and repaired_resp.content:
+            try:
+                repaired_data = repaired_resp.json()
+                repaired_text = repaired_data["candidates"][0]["content"]["parts"][0]["text"]
+                repaired_out = " ".join((repaired_text or "").strip().split())
+                if repaired_out:
+                    out = repaired_out
+            except Exception:
+                pass
+
+    # Enforce max length without cutting mid-word/sentence.
     if len(out) > 1200:
-        out = out[:1200].rstrip()
+        cut = out[:1200]
+        # Prefer cutting at the last sentence end; otherwise last space.
+        last_punct = max(cut.rfind("."), cut.rfind("!"), cut.rfind("?"))
+        if last_punct >= 200:
+            out = cut[: last_punct + 1].rstrip()
+        else:
+            last_space = cut.rfind(" ")
+            out = (cut[:last_space] if last_space > 0 else cut).rstrip()
+
     if not out:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Gemini returned empty prompt")
     return out
