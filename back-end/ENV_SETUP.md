@@ -25,6 +25,14 @@ GEMINI_MODEL=gemini-3-flash
 # If unsupported, backend will automatically fall back to non-search generation.
 GEMINI_USE_GOOGLE_SEARCH=false
 
+# Arc / Coins (Top Up -> Spend)
+# Used by backend to verify top-up transactions
+ARC_RPC_URL=https://rpc.testnet.arc.network
+# Treasury receives USDC top-ups (same as NEXT_PUBLIC_ARC_TREASURY_ADDRESS on frontend)
+ARC_TREASURY_ADDRESS=0xYOUR_TREASURY_ADDRESS
+# Coin rate: 1 USDC -> 100 coins (so veo3-fast costs 25 coins = 0.25 USDC)
+COIN_PER_USDC=100
+
 # Google OAuth (Sign in with Google)
 # Create these in Google Cloud Console (OAuth client: Web application)
 GOOGLE_CLIENT_ID=PASTE_YOUR_CLIENT_ID_HERE

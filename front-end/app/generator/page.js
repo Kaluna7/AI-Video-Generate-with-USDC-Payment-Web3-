@@ -12,9 +12,8 @@ import VideoPreviewPanel from '../components/generator/panels/VideoPreviewPanel'
 import TextToVideoSection from '../components/generator/sections/TextToVideoSection';
 import GenerateConfirmModal from '../components/generator/modals/GenerateConfirmModal';
 import { useAuthStore } from '../store/authStore';
-import { createTextToVideoJob, getVideoJob } from '../lib/api';
+import { createTextToVideoJob, getCoinBalance, getVideoJob } from '../lib/api';
 import { addVideoHistoryItem, formatRelativeTime, getVideoHistory } from '../lib/videoHistory';
-import { sendArcNativeUsdcPayment, waitForTxReceipt } from '../lib/arc';
 
 export default function GeneratorPage() {
   const router = useRouter();
@@ -38,9 +37,6 @@ export default function GeneratorPage() {
   const [videoJobId, setVideoJobId] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
   const [generationError, setGenerationError] = useState('');
-  const [isPaying, setIsPaying] = useState(false);
-  const [paymentError, setPaymentError] = useState('');
-  const [paymentTxHash, setPaymentTxHash] = useState('');
   const [historyTick, setHistoryTick] = useState(0);
 
   // Keep latest values for polling callbacks without adding extra effect deps (eslint rule)
@@ -67,16 +63,12 @@ export default function GeneratorPage() {
     getVideoHistory(historyUserId)
       .map((v) => ({ ...v, time: formatRelativeTime(v.createdAt) }));
 
-  const { freeGenerationUsed, setFreeGenerationUsed, usdcBalance, setUsdcBalance } = useAuthStore();
-  const arcTreasuryAddress = process.env.NEXT_PUBLIC_ARC_TREASURY_ADDRESS || '';
+  const { coinBalance, setCoinBalance, openTopUpModal } = useAuthStore();
 
   // Calculate generation cost
   const calculateCost = () => {
-    // Veo 3.1 docs: veo3-fast = 25 credits ($0.25), veo3 = 180 credits ($1.80)
-    const modelPrice = veoModel === 'veo3' ? 1.8 : 0.25;
-    // Keep hackathon/testnet pricing simple: charge only the model price.
-    // (No extra "AI enhancement" surcharge or platform fee.)
-    return modelPrice;
+    // Coins pricing (matches Veo credits): veo3-fast = 25, veo3 = 180
+    return veoModel === 'veo3' ? 180 : 25;
   };
 
   const handleGenerateClick = () => {
@@ -85,28 +77,10 @@ export default function GeneratorPage() {
 
   const handleConfirmGeneration = () => {
     const cost = calculateCost();
-    const isFree = !freeGenerationUsed;
-
-    setPaymentError('');
-    setPaymentTxHash('');
-
-    if (isFree) {
-      // Use free generation
-      setFreeGenerationUsed(true);
-      setGenerationStatus('generating');
-    } else {
-      // Real Arc testnet payment (USDC native gas)
-      if (!walletAddress) {
-        setPaymentError('Please connect your wallet first.');
-        return;
-      }
-      if (typeof window === 'undefined' || !window.ethereum) {
-        setPaymentError('MetaMask not found. Please install MetaMask.');
-        return;
-      }
+    if ((coinBalance || 0) < cost) {
+      openTopUpModal?.();
+      return;
     }
-
-    // Keep modal open while paying; we close it only after payment is done (or free)
 
     // Start backend generation job (Text tab -> text-to-video)
     setGenerationError('');
@@ -115,32 +89,8 @@ export default function GeneratorPage() {
 
     (async () => {
       try {
-        if (!isFree) {
-          setIsPaying(true);
-          if (!arcTreasuryAddress) {
-            throw new Error(
-              'Treasury address not configured. Set NEXT_PUBLIC_ARC_TREASURY_ADDRESS in front-end env (.env.local) and restart the frontend.'
-            );
-          }
-
-          const txHash = await sendArcNativeUsdcPayment({
-            from: walletAddress,
-            to: arcTreasuryAddress,
-            amountUsdc: cost.toFixed(2),
-          });
-          setPaymentTxHash(txHash);
-          // Wait for confirmation
-          const receipt = await waitForTxReceipt(txHash, { timeoutMs: 180000, pollMs: 2000 });
-          if (!receipt || receipt.status !== '0x1') {
-            throw new Error('Payment transaction failed');
-          }
-          setGenerationStatus('confirmed');
-          setIsPaying(false);
-          setIsConfirmModalOpen(false);
-          setGenerationStatus('generating');
-        } else {
-          setIsConfirmModalOpen(false);
-        }
+        setIsConfirmModalOpen(false);
+        setGenerationStatus('generating');
 
         const job = await createTextToVideoJob({
           prompt,
@@ -148,6 +98,13 @@ export default function GeneratorPage() {
           aspect_ratio: veoAspectRatio,
         });
         setVideoJobId(job.job_id);
+        // Refresh coin balance from backend (authoritative)
+        try {
+          const bal = await getCoinBalance();
+          if (bal && typeof bal.coins === 'number') setCoinBalance(bal.coins);
+        } catch {
+          // ignore
+        }
         if (job.status === 'succeeded' && job.video_url) {
           setVideoUrl(job.video_url);
           setGenerationStatus('ready');
@@ -162,7 +119,7 @@ export default function GeneratorPage() {
             title,
             prompt,
             videoUrl: job.video_url,
-            paymentTxHash: paymentTxHash || null,
+            coinsSpent: job.coins_spent || cost,
             createdAt: Date.now(),
           });
           setHistoryTick((t) => t + 1);
@@ -173,9 +130,10 @@ export default function GeneratorPage() {
           setGenerationStatus('generating');
         }
       } catch (e) {
-        setIsPaying(false);
-        setIsConfirmModalOpen(true);
-        setPaymentError(e.message || 'Payment failed');
+        // If backend says insufficient coins, open top up
+        if ((e?.message || '').toLowerCase().includes('insufficient coins')) {
+          openTopUpModal?.();
+        }
         setGenerationError(e.message || 'Failed to start generation');
         setGenerationStatus('waiting');
       }
@@ -229,7 +187,6 @@ export default function GeneratorPage() {
   }, [generationStatus, videoJobId, historyUserId]);
 
   const cost = calculateCost();
-  const isFree = !freeGenerationUsed;
 
   const handleNavigateToText = () => {
     setCurrentView('text-to-video');
@@ -348,10 +305,7 @@ export default function GeneratorPage() {
         onClose={() => setIsConfirmModalOpen(false)}
         onConfirm={handleConfirmGeneration}
         cost={cost}
-        isFree={isFree}
-        isPaying={isPaying}
-        paymentError={paymentError}
-        treasuryAddress={arcTreasuryAddress}
+        isFree={false}
       />
     </div>
   );

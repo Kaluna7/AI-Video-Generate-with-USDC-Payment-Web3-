@@ -1,5 +1,7 @@
 'use client';
 
+import Image from 'next/image';
+
 export default function GenerateConfirmModal({
   isOpen,
   onClose,
@@ -58,13 +60,11 @@ export default function GenerateConfirmModal({
             ) : (
               <div className="text-center">
                 <p className="text-sm text-gray-400 mb-2">Generation Cost</p>
-                <p className="text-3xl font-bold gradient-text mb-1">{cost.toFixed(2)} USDC</p>
-                <p className="text-xs text-gray-400">You&apos;ll pay on Arc testnet using USDC (native gas)</p>
-                {treasuryAddress && (
-                  <p className="mt-2 text-[11px] text-gray-500">
-                    Recipient: <span className="text-gray-300 font-mono">{treasuryAddress}</span>
-                  </p>
-                )}
+                <div className="flex items-center justify-center gap-2">
+                  <Image src="/assets/images/coin.png" alt="Coin" width={28} height={28} />
+                  <p className="text-3xl font-bold gradient-text mb-1">{Math.floor(cost)} coins</p>
+                </div>
+                <p className="text-xs text-gray-400">Coins are deducted from your in-app balance</p>
               </div>
             )}
           </div>
@@ -83,8 +83,8 @@ export default function GenerateConfirmModal({
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 <div className="min-w-0">
-                  <p className="text-sm text-white font-medium">Waiting for wallet confirmation…</p>
-                  <p className="text-xs text-gray-400">Approve the transaction in MetaMask</p>
+                  <p className="text-sm text-white font-medium">Processing…</p>
+                  <p className="text-xs text-gray-400">Preparing your generation</p>
                 </div>
               </div>
             </div>

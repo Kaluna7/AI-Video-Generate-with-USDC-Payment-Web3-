@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAuthStore } from '../../../store/authStore';
+import TopUpModal from '../modals/TopUpModal';
 
 const ARC_TESTNET_FAUCETS = [
   { label: 'Circle Faucet', url: 'https://faucet.circle.com' },
@@ -35,9 +37,11 @@ const formatUnits = (value, decimals) => {
 
 export default function AppHeader() {
   const usdcBalance = useAuthStore((state) => state.usdcBalance);
+  const coinBalance = useAuthStore((state) => state.coinBalance);
   const walletAddress = useAuthStore((state) => state.walletAddress);
   const setUsdcBalance = useAuthStore((state) => state.setUsdcBalance);
   const setWalletAddress = useAuthStore((state) => state.setWalletAddress);
+  const openTopUpModal = useAuthStore((state) => state.openTopUpModal);
   const [isConnecting, setIsConnecting] = useState(false);
   const [chainId, setChainId] = useState('');
 
@@ -182,6 +186,20 @@ export default function AppHeader() {
 
           {/* Right Side - USDC Balance & Wallet */}
           <div className="flex items-center gap-3">
+            {/* Coin Balance */}
+            <button
+              type="button"
+              onClick={openTopUpModal}
+              className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors"
+              title="Top up coins"
+            >
+              <Image src="/assets/images/coin.png" alt="Coin" width={16} height={16} />
+              <span className="text-sm font-semibold text-white">{Number(coinBalance || 0)}</span>
+              <span className="text-xs text-gray-400 hidden sm:inline">Coins</span>
+              <span className="text-xs text-gray-400 sm:hidden">C</span>
+              <span className="text-xs text-purple-300 hidden sm:inline">Top Up</span>
+            </button>
+
             {/* USDC Balance Display */}
             <div className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700">
               <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -327,6 +345,7 @@ export default function AppHeader() {
           </div>
         </div>
       </div>
+      <TopUpModal />
     </header>
   );
 }

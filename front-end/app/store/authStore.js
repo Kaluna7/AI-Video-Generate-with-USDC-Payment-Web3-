@@ -25,6 +25,14 @@ const getFreeGenerationUsed = () => {
   return false;
 };
 
+const getInitialCoinBalance = () => {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('coin_balance');
+    return stored ? parseInt(stored, 10) : 0;
+  }
+  return 0;
+};
+
 export const useAuthStore = create((set) => ({
   isAuthModalOpen: false,
   activeTab: 'login', // 'login' or 'register'
@@ -32,6 +40,8 @@ export const useAuthStore = create((set) => ({
   usdcBalance: getInitialBalance(), // USDC balance
   walletAddress: getInitialWallet(), // Connected wallet address
   freeGenerationUsed: getFreeGenerationUsed(), // Track if free generation has been used
+  coinBalance: getInitialCoinBalance(), // In-app coins (top up first)
+  isTopUpModalOpen: false,
   openAuthModal: (tab = 'login') => set({ isAuthModalOpen: true, activeTab: tab }),
   closeAuthModal: () => set({ isAuthModalOpen: false }),
   setActiveTab: (tab) => set({ activeTab: tab }),
@@ -59,6 +69,15 @@ export const useAuthStore = create((set) => ({
       localStorage.setItem('free_generation_used', used.toString());
     }
   },
+  setCoinBalance: (coins) => {
+    const n = Number.isFinite(coins) ? Math.max(0, Math.floor(coins)) : 0;
+    set({ coinBalance: n });
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('coin_balance', n.toString());
+    }
+  },
+  openTopUpModal: () => set({ isTopUpModalOpen: true }),
+  closeTopUpModal: () => set({ isTopUpModalOpen: false }),
   logout: () => set({ user: null }),
 }));
 

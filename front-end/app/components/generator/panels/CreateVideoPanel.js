@@ -40,8 +40,8 @@ export default function CreateVideoPanel({
     }
   };
   const veoModels = [
-    { value: 'veo3-fast', label: 'veo3-fast', price: 0.25 },
-    { value: 'veo3', label: 'veo3 (HQ)', price: 1.8 },
+    { value: 'veo3-fast', label: 'veo3-fast', price: 25 },
+    { value: 'veo3', label: 'veo3 (HQ)', price: 180 },
   ];
   const aspectRatios = ['16:9', '9:16', 'Auto'];
 
@@ -135,12 +135,12 @@ export default function CreateVideoPanel({
                     }`}
                   >
                     {m.label}
-                    <span className="block text-[10px] opacity-80 mt-0.5">{m.price} USDC</span>
+                    <span className="block text-[10px] opacity-80 mt-0.5">{m.price} coins</span>
                   </button>
                 ))}
               </div>
               <p className="text-[11px] text-gray-500 mt-2">
-                Note: Veo 3.1 API does not let you choose “seconds” directly—duration is determined by the model.
+                Coins are deducted from your in-app balance (Top Up once, then generate).
               </p>
             </div>
 

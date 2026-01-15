@@ -441,6 +441,25 @@ class User(Base):
     reset_token_expires_at = Column(DateTime, nullable=True)
 
 
+class UserCoinBalance(Base):
+    __tablename__ = "user_coin_balances"
+
+    user_id = Column(Integer, primary_key=True, index=True)
+    coins = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CoinTopUpTx(Base):
+    __tablename__ = "coin_topup_txs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    tx_hash = Column(String, unique=True, index=True, nullable=False)
+    amount_wei = Column(String, nullable=False)  # store as decimal string
+    coins_added = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 Base.metadata.create_all(bind=engine)
 
 
@@ -506,6 +525,8 @@ class VideoJobOut(BaseModel):
     video_url: Optional[str] = None
     error: Optional[str] = None
     created_at: datetime
+    coins_spent: Optional[int] = None
+    coins_balance: Optional[int] = None
 
 
 # In-memory job store (OK for hackathon / single-instance dev)
@@ -534,6 +555,57 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
 
 def _provider_name() -> str:
     return (os.getenv("VIDEO_PROVIDER") or "mock").strip().lower()
+
+
+def _arc_rpc_url() -> str:
+    url = os.getenv("ARC_RPC_URL") or "https://rpc.testnet.arc.network"
+    return url.strip().strip('"').strip("'")
+
+
+def _arc_treasury_address() -> str:
+    v = os.getenv("ARC_TREASURY_ADDRESS")
+    if v:
+        v = v.strip().strip('"').strip("'")
+    if not v:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="ARC_TREASURY_ADDRESS is not set")
+    return v
+
+
+def _coins_per_usdc() -> int:
+    # Default: 1.00 USDC -> 100 coins (so 0.25 USDC -> 25 coins)
+    v = os.getenv("COIN_PER_USDC") or "100"
+    try:
+        n = int(v.strip())
+        return max(1, n)
+    except Exception:
+        return 100
+
+
+def _rpc_call(method: str, params: list) -> Any:
+    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    resp = requests.post(_arc_rpc_url(), json=payload, timeout=30)
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Arc RPC error ({resp.status_code}): {resp.text}")
+    data = resp.json()
+    if "error" in data:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Arc RPC error: {data['error']}")
+    return data.get("result")
+
+
+def _get_or_create_coin_balance(db: Session, user_id: int) -> UserCoinBalance:
+    row = db.query(UserCoinBalance).filter(UserCoinBalance.user_id == user_id).first()
+    if row:
+        return row
+    row = UserCoinBalance(user_id=user_id, coins=0)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _model_cost_coins(model: Optional[str]) -> int:
+    m = (model or "veo3-fast").strip().lower()
+    return 180 if m == "veo3" else 25
 
 
 def _replicate_headers() -> Dict[str, str]:
@@ -938,6 +1010,86 @@ def enhance_prompt(body: EnhancePromptRequest, current_user: User = Depends(get_
 
 
 # ==============================
+# Coins (Top Up -> Spend)
+# ==============================
+
+
+class CoinBalanceOut(BaseModel):
+    coins: int
+
+
+class ClaimTopUpRequest(BaseModel):
+    tx_hash: str
+
+
+class ClaimTopUpResponse(BaseModel):
+    coins: int
+    coins_added: int
+    tx_hash: str
+
+
+@app.get("/coins/balance", response_model=CoinBalanceOut)
+def get_coin_balance(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    bal = _get_or_create_coin_balance(db, current_user.id)
+    return {"coins": int(bal.coins or 0)}
+
+
+@app.post("/coins/topup/claim", response_model=ClaimTopUpResponse)
+def claim_topup(body: ClaimTopUpRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    tx_hash = (body.tx_hash or "").strip()
+    if not tx_hash or not tx_hash.startswith("0x"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tx_hash is required")
+
+    # Prevent double-claim globally
+    existing = db.query(CoinTopUpTx).filter(CoinTopUpTx.tx_hash == tx_hash).first()
+    if existing:
+        bal = _get_or_create_coin_balance(db, current_user.id)
+        return {"coins": int(bal.coins or 0), "coins_added": 0, "tx_hash": tx_hash}
+
+    tx = _rpc_call("eth_getTransactionByHash", [tx_hash])
+    if not isinstance(tx, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction not found")
+
+    receipt = _rpc_call("eth_getTransactionReceipt", [tx_hash])
+    if not isinstance(receipt, dict) or str(receipt.get("status", "")).lower() != "0x1":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction not confirmed/successful yet")
+
+    to_addr = (tx.get("to") or "").lower()
+    treasury = _arc_treasury_address().lower()
+    if not to_addr or to_addr != treasury:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction recipient is not treasury")
+
+    value_hex = tx.get("value") or "0x0"
+    try:
+        value_wei = int(value_hex, 16)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tx value")
+
+    if value_wei <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Top up amount must be > 0")
+
+    # coins_added = floor(value_wei * coins_per_usdc / 1e18)
+    coins_added = (value_wei * _coins_per_usdc()) // 10**18
+    if coins_added <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Top up amount too small")
+
+    bal = _get_or_create_coin_balance(db, current_user.id)
+    bal.coins = int(bal.coins or 0) + int(coins_added)
+    db.add(bal)
+    db.add(
+        CoinTopUpTx(
+            user_id=current_user.id,
+            tx_hash=tx_hash,
+            amount_wei=str(value_wei),
+            coins_added=int(coins_added),
+        )
+    )
+    db.commit()
+    db.refresh(bal)
+    return {"coins": int(bal.coins or 0), "coins_added": int(coins_added), "tx_hash": tx_hash}
+
+
+# ==============================
 # Video generation endpoints
 # ==============================
 
@@ -946,9 +1098,20 @@ def enhance_prompt(body: EnhancePromptRequest, current_user: User = Depends(get_
 def create_text_to_video_job(
     body: TextToVideoRequest,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     if not body.prompt or not body.prompt.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt is required")
+
+    # Spend coins for generation
+    cost_coins = _model_cost_coins(body.model)
+    bal = _get_or_create_coin_balance(db, current_user.id)
+    if int(bal.coins or 0) < int(cost_coins):
+        raise HTTPException(status_code=402, detail=f"Insufficient coins. Need {cost_coins} coins.")
+    bal.coins = int(bal.coins or 0) - int(cost_coins)
+    db.add(bal)
+    db.commit()
+    db.refresh(bal)
 
     provider = _provider_name()
     job_id = str(uuid4())
@@ -1023,6 +1186,8 @@ def create_text_to_video_job(
         video_url=job.get("video_url"),
         error=job.get("error"),
         created_at=job["created_at"],
+        coins_spent=int(cost_coins),
+        coins_balance=int(bal.coins or 0),
     )
 
 

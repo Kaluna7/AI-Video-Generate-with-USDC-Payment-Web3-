@@ -119,6 +119,32 @@ export const resetPassword = async (data) => {
 };
 
 // ==============================
+// Coins (Top Up -> Spend)
+// ==============================
+
+export const getCoinBalance = async () => {
+  const response = await fetch(`${API_BASE_URL}/coins/balance`, {
+    method: 'GET',
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+  return await handleResponse(response);
+};
+
+export const claimTopUp = async ({ tx_hash }) => {
+  const response = await fetch(`${API_BASE_URL}/coins/topup/claim`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ tx_hash }),
+  });
+  return await handleResponse(response);
+};
+
+// ==============================
 // AI prompt enhancement (Gemini)
 // ==============================
 
