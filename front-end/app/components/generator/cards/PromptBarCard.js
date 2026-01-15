@@ -4,11 +4,11 @@ export default function PromptBarCard({ item }) {
   const videoSrc = item?.videoSrc || '/assets/video/city.mp4';
 
   return (
-    <div className="w-full bg-[#0b0f14]/95 rounded-3xl border border-white/10 overflow-hidden hover:border-purple-500/40 transition-all shadow-2xl">
+    <div className="w-full bg-[#06080c]/95 rounded-3xl border border-white/10 overflow-hidden hover:border-purple-500/40 transition-all shadow-2xl">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
         {/* Left: Video Preview */}
         <div className="relative">
-          <div className="aspect-video bg-[#0f141b] rounded-xl border border-white/10 overflow-hidden group relative">
+          <div className="aspect-video bg-[#0a0d12] rounded-xl border border-white/10 overflow-hidden group relative">
             {/* Autoplay looping preview video */}
             <video
               className="absolute inset-0 w-full h-full object-cover"
