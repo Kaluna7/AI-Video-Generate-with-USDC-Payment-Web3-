@@ -343,6 +343,12 @@ def _veo3_create_task(prompt: str, duration_seconds: int) -> Dict[str, Any]:
         json=payload,
         timeout=60,
     )
+    # If auth is wrong, bubble it up as 401/403 so frontend sees the real issue (not 502).
+    if resp.status_code in (401, 403):
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Veo3 unauthorized: {resp.text}",
+        )
     if resp.status_code >= 400:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -357,6 +363,11 @@ def _veo3_get_status(task_id: str) -> Dict[str, Any]:
         headers=_veo3_headers(),
         timeout=30,
     )
+    if resp.status_code in (401, 403):
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Veo3 unauthorized: {resp.text}",
+        )
     if resp.status_code >= 400:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -371,6 +382,11 @@ def _veo3_get_download(task_id: str) -> Dict[str, Any]:
         headers=_veo3_headers(),
         timeout=60,
     )
+    if resp.status_code in (401, 403):
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Veo3 unauthorized: {resp.text}",
+        )
     if resp.status_code >= 400:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
