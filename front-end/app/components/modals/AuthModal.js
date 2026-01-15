@@ -218,7 +218,7 @@ export default function AuthModal() {
           <p className="mt-6 text-center text-sm text-gray-400">
             {activeTab === 'login' ? (
               <>
-                Don't have an account?{' '}
+                Don&apos;t have an account?{' '}
                 <button
                   onClick={() => handleTabChange('register')}
                   className="text-purple-400 hover:text-purple-300 transition-colors"

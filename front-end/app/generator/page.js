@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import AppHeader from '../components/generator/AppHeader';
-import SidebarNav from '../components/generator/SidebarNav';
-import HomePage from '../components/generator/HomePage';
-import InspirationPage from '../components/generator/InspirationPage';
-import MyVideosPage from '../components/generator/MyVideosPage';
-import CreateVideoPanel from '../components/generator/CreateVideoPanel';
-import VideoPreviewPanel from '../components/generator/VideoPreviewPanel';
-import TextToVideoSection from '../components/generator/TextToVideoSection';
-import GenerateConfirmModal from '../components/generator/GenerateConfirmModal';
+import AppHeader from '../components/generator/layout/AppHeader';
+import SidebarNav from '../components/generator/layout/SidebarNav';
+import HomePage from '../components/generator/pages/HomePage';
+import InspirationPage from '../components/generator/pages/InspirationPage';
+import MyVideosPage from '../components/generator/pages/MyVideosPage';
+import CreateVideoPanel from '../components/generator/panels/CreateVideoPanel';
+import VideoPreviewPanel from '../components/generator/panels/VideoPreviewPanel';
+import TextToVideoSection from '../components/generator/sections/TextToVideoSection';
+import GenerateConfirmModal from '../components/generator/modals/GenerateConfirmModal';
 import { useAuthStore } from '../store/authStore';
 
 export default function GeneratorPage() {
@@ -176,8 +176,10 @@ export default function GeneratorPage() {
 
       {/* Text to Video Section - Full width component below grid (only for text-to-video) */}
       {currentView === 'text-to-video' && (
-        <div className="lg:pl-20">
-          <TextToVideoSection />
+        <div className="lg:pl-20 pb-10">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-[1600px]">
+            <TextToVideoSection />
+          </div>
         </div>
       )}
 

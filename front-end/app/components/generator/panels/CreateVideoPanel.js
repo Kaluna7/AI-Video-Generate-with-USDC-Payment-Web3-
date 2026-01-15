@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import EnhanceAIModal from './EnhanceAIModal';
+import EnhanceAIModal from '../modals/EnhanceAIModal';
 
 export default function CreateVideoPanel({
   title = 'Create Video',

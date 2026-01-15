@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -12,15 +13,31 @@ from sqlalchemy.orm import sessionmaker, Session
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
+
+if load_dotenv:
+    base_dir = Path(__file__).resolve().parent
+    load_dotenv(base_dir / ".env")
+    load_dotenv(base_dir.parent / ".env")
 # ==============================
 # Database configuration
 # ==============================
-
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg2://postgres:12345@localhost:5432/web3",
-)
-
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL:
+    # Normalize common .env issues: surrounding quotes or trailing whitespace.
+    DATABASE_URL = DATABASE_URL.strip().strip('"').strip("'")
+if not DATABASE_URL:
+    if load_dotenv is None:
+        raise RuntimeError(
+            "DATABASE_URL is not set and python-dotenv is missing. "
+            "Install it (pip install python-dotenv) or set DATABASE_URL in OS env vars."
+        )
+    raise RuntimeError(
+        "DATABASE_URL is not set. Add it to back-end/.env or project-root/.env."
+    )
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

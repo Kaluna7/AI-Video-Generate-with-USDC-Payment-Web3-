@@ -66,7 +66,7 @@ export default function GenerateConfirmModal({ isOpen, onClose, onConfirm, cost,
                 <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
                   <li>Your video will be generated using AI</li>
                   <li>This process may take a few minutes</li>
-                  <li>You'll be notified when it's ready</li>
+                  <li>You&apos;ll be notified when it&apos;s ready</li>
                 </ul>
               </div>
             </div>

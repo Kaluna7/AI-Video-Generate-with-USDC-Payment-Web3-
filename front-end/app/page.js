@@ -1,11 +1,11 @@
-import Header from './components/Header';
-import Hero from './components/Hero';
-import Stats from './components/Stats';
-import Features from './components/Features';
-import HowItWorks from './components/HowItWorks';
-import Pricing from './components/Pricing';
-import CTA from './components/CTA';
-import Footer from './components/Footer';
+import Header from './components/common/Header';
+import Hero from './components/common/Hero';
+import Stats from './components/common/Stats';
+import Features from './components/common/Features';
+import HowItWorks from './components/common/HowItWorks';
+import Pricing from './components/common/Pricing';
+import CTA from './components/common/CTA';
+import Footer from './components/common/Footer';
 
 export default function Home() {
   return (
