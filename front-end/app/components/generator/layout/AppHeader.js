@@ -176,10 +176,40 @@ export default function AppHeader() {
 
             {/* Wallet Connection */}
             {walletAddress ? (
-              <div className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 group relative">
+              <div
+                className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 group relative"
+                title={walletAddress}
+              >
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                 <span className="text-xs text-white font-mono hidden sm:inline">{formatAddress(walletAddress)}</span>
                 <span className="text-xs text-white font-mono sm:hidden">{formatAddress(walletAddress)}</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(walletAddress);
+                    } catch {
+                      // Fallback for older browsers
+                      try {
+                        const el = document.createElement('textarea');
+                        el.value = walletAddress;
+                        document.body.appendChild(el);
+                        el.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(el);
+                      } catch {
+                        // no-op
+                      }
+                    }
+                  }}
+                  className="ml-1 text-gray-400 hover:text-white transition-colors"
+                  title="Copy wallet address"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h10a2 2 0 012 2v10a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 17H5a2 2 0 01-2-2V5a2 2 0 012-2h10a2 2 0 012 2v1" />
+                  </svg>
+                </button>
                 <button
                   type="button"
                   onClick={() => refreshArcBalance(walletAddress)}
