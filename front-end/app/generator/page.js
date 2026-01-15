@@ -68,6 +68,7 @@ export default function GeneratorPage() {
       .map((v) => ({ ...v, time: formatRelativeTime(v.createdAt) }));
 
   const { freeGenerationUsed, setFreeGenerationUsed, usdcBalance, setUsdcBalance } = useAuthStore();
+  const arcTreasuryAddress = process.env.NEXT_PUBLIC_ARC_TREASURY_ADDRESS || '';
 
   // Calculate generation cost
   const calculateCost = () => {
@@ -116,13 +117,15 @@ export default function GeneratorPage() {
       try {
         if (!isFree) {
           setIsPaying(true);
-          const treasury =
-            process.env.NEXT_PUBLIC_ARC_TREASURY_ADDRESS ||
-            walletAddress; // fallback for dev demo if treasury not configured
+          if (!arcTreasuryAddress) {
+            throw new Error(
+              'Treasury address not configured. Set NEXT_PUBLIC_ARC_TREASURY_ADDRESS in front-end env (.env.local) and restart the frontend.'
+            );
+          }
 
           const txHash = await sendArcNativeUsdcPayment({
             from: walletAddress,
-            to: treasury,
+            to: arcTreasuryAddress,
             amountUsdc: cost.toFixed(2),
           });
           setPaymentTxHash(txHash);
@@ -348,6 +351,7 @@ export default function GeneratorPage() {
         isFree={isFree}
         isPaying={isPaying}
         paymentError={paymentError}
+        treasuryAddress={arcTreasuryAddress}
       />
     </div>
   );
