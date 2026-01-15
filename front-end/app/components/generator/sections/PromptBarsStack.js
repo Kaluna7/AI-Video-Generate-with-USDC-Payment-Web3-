@@ -92,8 +92,8 @@ export default function PromptBarsStack({ items }) {
               (rel < 0 && absRel <= maxVisibleBehind);
 
             const y = rel * stackGapY;
-            // Make scrolled/stacked cards more visible
-            const opacity = i === activeIndex ? 1 : Math.max(0.45, 1 - absRel * 0.25);
+            // Make scrolled/stacked cards more faded
+            const opacity = i === activeIndex ? 1 : Math.max(0.22, 1 - absRel * 0.42);
             const scale = i === activeIndex ? 1 : Math.max(0.9, 1 - absRel * 0.05);
             const zIndex = 50 - absRel;
 
