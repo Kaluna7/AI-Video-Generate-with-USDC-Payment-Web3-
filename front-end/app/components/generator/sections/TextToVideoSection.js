@@ -53,39 +53,39 @@ export default function TextToVideoSection() {
         <div className="mt-6 ps-marquee">
           <div className="ps-marquee__track">
             <div className="flex items-center gap-5">
-              <span className="text-sm text-gray-300 whitespace-nowrap">Text to Video</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Turn ideas into videos in minutes</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Veo 3.1</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Cinematic motion, studio-ready results</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Cinematic</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">High-quality Veo 3.1 generation</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Anime</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Fast previews, smoother iterations</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Portrait 9:16</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Perfect for Shorts, Reels, and TikTok</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">HD</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Choose aspect ratio: 16:9, 9:16, or Auto</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Auto Aspect</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">From prompt to playable video—no timeline needed</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Fast Generation</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Create, refine, and generate on demand</span>
             </div>
             {/* duplicate for seamless loop */}
             <div className="flex items-center gap-5" aria-hidden="true">
-              <span className="text-sm text-gray-300 whitespace-nowrap">Text to Video</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Turn ideas into videos in minutes</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Veo 3.1</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Cinematic motion, studio-ready results</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Cinematic</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">High-quality Veo 3.1 generation</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Anime</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Fast previews, smoother iterations</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Portrait 9:16</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Perfect for Shorts, Reels, and TikTok</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">HD</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Choose aspect ratio: 16:9, 9:16, or Auto</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Auto Aspect</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">From prompt to playable video—no timeline needed</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">Fast Generation</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">Create, refine, and generate on demand</span>
             </div>
           </div>
         </div>
