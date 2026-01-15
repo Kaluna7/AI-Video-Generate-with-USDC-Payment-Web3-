@@ -48,32 +48,32 @@ export default function TextToVideoSection() {
     {
       name: 'Alya S.',
       role: 'Content Creator',
-      text: 'Hemat waktu banget. Dari prompt ke video jadi cepat dan hasilnya kelihatan premium.',
+      text: 'Huge time-saver. From prompt to video in minutes—and the result looks premium.',
     },
     {
       name: 'Rizky P.',
       role: 'TikTok Editor',
-      text: 'Preview-nya bikin workflow makin enak. Tinggal iterasi prompt, beres.',
+      text: 'The previews make the workflow effortless. Iterate the prompt, ship the video.',
     },
     {
       name: 'Nadia K.',
       role: 'Brand Designer',
-      text: 'Stylenya konsisten. Cocok buat campaign yang butuh output cepat tapi tetap rapi.',
+      text: 'Consistent style and clean output. Perfect for fast-turnaround campaigns.',
     },
     {
       name: 'Kevin M.',
       role: 'YouTube Shorts',
-      text: 'Beneran ngebantu bikin banyak variasi video tanpa ribet timeline.',
+      text: 'Makes it easy to generate multiple variations without touching a timeline.',
     },
     {
       name: 'Salsa R.',
       role: 'Freelance Marketer',
-      text: 'Simple UI, hasilnya mantap. Klienku suka karena cepat buat testing konsep.',
+      text: 'Simple UI, strong results. My clients love how fast we can test concepts.',
     },
     {
       name: 'Dimas H.',
       role: 'UGC Creator',
-      text: 'Sekali coba langsung ketagihan. Output-nya siap posting.',
+      text: 'Tried it once and got hooked. The output is ready to post.',
     },
   ];
 
