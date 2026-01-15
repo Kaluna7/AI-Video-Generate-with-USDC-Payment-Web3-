@@ -18,6 +18,7 @@ import { addVideoHistoryItem, formatRelativeTime, getVideoHistory } from '../lib
 export default function GeneratorPage() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const walletAddress = useAuthStore((state) => state.walletAddress);
   const [currentView, setCurrentView] = useState('home'); // 'home', 'text-to-video', 'image-to-video'
   const [activeTab, setActiveTab] = useState('text');
   const [prompt, setPrompt] = useState('A cinematic drone shot flying over a futuristic city at sunset with neon lights...');
@@ -56,12 +57,13 @@ export default function GeneratorPage() {
     }
   }, [user, router]);
 
+  // Local history is stored per "account". Prefer app user id, fall back to connected wallet, else anonymous.
+  const historyUserId = user?.id || walletAddress || 'anonymous';
+
   const recentGenerations =
-    user?.id
-      ? getVideoHistory(user.id)
-          .slice(0, 3)
-          .map((v) => ({ ...v, time: formatRelativeTime(v.createdAt) }))
-      : [];
+    getVideoHistory(historyUserId)
+      .slice(0, 3)
+      .map((v) => ({ ...v, time: formatRelativeTime(v.createdAt) }));
 
   const { freeGenerationUsed, setFreeGenerationUsed, usdcBalance, setUsdcBalance } = useAuthStore();
 
@@ -119,21 +121,19 @@ export default function GeneratorPage() {
           setVideoUrl(job.video_url);
           setGenerationStatus('ready');
 
-          if (user?.id) {
-            const title =
-              prompt.split(/[.\n]/)[0]?.trim().slice(0, 32) ||
-              (currentView === 'image-to-video' ? 'Image to Video' : 'Text to Video');
-            addVideoHistoryItem(user.id, {
-              id: `${job.job_id}`,
-              jobId: job.job_id,
-              type: activeTab === 'image' ? 'image' : 'text',
-              title,
-              prompt,
-              videoUrl: job.video_url,
-              createdAt: Date.now(),
-            });
-            setHistoryTick((t) => t + 1);
-          }
+          const title =
+            prompt.split(/[.\n]/)[0]?.trim().slice(0, 32) ||
+            (currentView === 'image-to-video' ? 'Image to Video' : 'Text to Video');
+          addVideoHistoryItem(historyUserId, {
+            id: `${job.job_id}`,
+            jobId: job.job_id,
+            type: activeTab === 'image' ? 'image' : 'text',
+            title,
+            prompt,
+            videoUrl: job.video_url,
+            createdAt: Date.now(),
+          });
+          setHistoryTick((t) => t + 1);
         } else if (job.status === 'failed') {
           setGenerationError(job.error || 'Generation failed');
           setGenerationStatus('waiting');
@@ -161,24 +161,22 @@ export default function GeneratorPage() {
           setGenerationStatus('ready');
           clearInterval(interval);
 
-          if (user?.id) {
-            const latestPrompt = promptRef.current;
-            const latestTab = activeTabRef.current;
-            const latestView = currentViewRef.current;
-            const title =
-              latestPrompt.split(/[.\n]/)[0]?.trim().slice(0, 32) ||
-              (latestView === 'image-to-video' ? 'Image to Video' : 'Text to Video');
-            addVideoHistoryItem(user.id, {
-              id: `${videoJobId}`,
-              jobId: videoJobId,
-              type: latestTab === 'image' ? 'image' : 'text',
-              title,
-              prompt: latestPrompt,
-              videoUrl: job.video_url,
-              createdAt: Date.now(),
-            });
-            setHistoryTick((t) => t + 1);
-          }
+          const latestPrompt = promptRef.current;
+          const latestTab = activeTabRef.current;
+          const latestView = currentViewRef.current;
+          const title =
+            latestPrompt.split(/[.\n]/)[0]?.trim().slice(0, 32) ||
+            (latestView === 'image-to-video' ? 'Image to Video' : 'Text to Video');
+          addVideoHistoryItem(historyUserId, {
+            id: `${videoJobId}`,
+            jobId: videoJobId,
+            type: latestTab === 'image' ? 'image' : 'text',
+            title,
+            prompt: latestPrompt,
+            videoUrl: job.video_url,
+            createdAt: Date.now(),
+          });
+          setHistoryTick((t) => t + 1);
         } else if (job.status === 'failed') {
           setGenerationError(job.error || 'Generation failed');
           setGenerationStatus('waiting');
@@ -193,7 +191,7 @@ export default function GeneratorPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [generationStatus, videoJobId, user?.id]);
+  }, [generationStatus, videoJobId, historyUserId]);
 
   const cost = calculateCost();
   const isFree = !freeGenerationUsed;

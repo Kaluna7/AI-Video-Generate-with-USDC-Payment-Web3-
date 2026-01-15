@@ -7,7 +7,11 @@ import { formatRelativeTime, getVideoHistory } from '../../../lib/videoHistory';
 export default function MyVideosPage() {
   const [activeTab, setActiveTab] = useState('text');
   const user = useAuthStore((state) => state.user);
+  const walletAddress = useAuthStore((state) => state.walletAddress);
   const [historyTick, setHistoryTick] = useState(0);
+
+  // Local history is stored per "account". Prefer app user id, fall back to connected wallet, else anonymous.
+  const historyUserId = user?.id || walletAddress || 'anonymous';
 
   useEffect(() => {
     const handler = () => setHistoryTick((t) => t + 1);
@@ -22,11 +26,10 @@ export default function MyVideosPage() {
   }, []);
 
   const filtered = (() => {
-    if (!user?.id) return [];
     // touch historyTick so UI refreshes when history changes
     void historyTick;
     const type = activeTab === 'text' ? 'text' : 'image';
-    return getVideoHistory(user.id)
+    return getVideoHistory(historyUserId)
       .map((v) => ({
         ...v,
         createdAtLabel: formatRelativeTime(v.createdAt),

@@ -23,9 +23,6 @@ export default function Header() {
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-4">
-            <button className="px-4 py-2 text-gray-300 hover:text-white transition-colors">
-              Connect Wallet
-            </button>
             <button
               onClick={() => openAuthModal('login')}
               className="px-6 py-2.5 gradient-purple-blue text-white rounded-lg font-medium hover:opacity-90 transition-opacity"

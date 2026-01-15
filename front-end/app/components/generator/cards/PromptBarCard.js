@@ -28,7 +28,7 @@ export default function PromptBarCard({ item }) {
 
         {/* Right: Text Content */}
         <div className="flex flex-col justify-center">
-          <h3 className="text-2xl md:text-3xl font-bold text-white mb-3 leading-tight">
+          <h3 className="inline-block text-2xl md:text-3xl font-bold bg-gradient-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent mb-3 leading-tight">
             {item.headline}
           </h3>
           <p
