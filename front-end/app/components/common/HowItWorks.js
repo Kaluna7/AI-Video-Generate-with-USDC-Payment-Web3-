@@ -5,7 +5,7 @@ export default function HowItWorks() {
     {
       number: '1',
       title: 'Connect Wallet',
-      description: 'Connect your Web3 wallet and fund it with USDC. Our platform supports all major wallets including MetaMask, WalletConnect, and more.',
+      description: 'Connect your wallet to pay with USDC and start generating videos in seconds.',
     },
     {
       number: '2',
@@ -47,6 +47,54 @@ export default function HowItWorks() {
                 <p className="text-gray-400 text-center leading-relaxed">
                   {step.description}
                 </p>
+
+                  {step.title === 'Connect Wallet' && (
+                    <div className="mt-6 grid grid-cols-1 gap-3">
+                      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold bg-gradient-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
+                              Arc
+                            </p>
+                            <p className="mt-2 text-sm text-gray-300 leading-relaxed">
+                              Arc is an EVM-compatible Layer-1 blockchain using USDC as native gas, built for stablecoin finance,
+                              tokenization, and global payments across scalable & transparent networks.
+                            </p>
+                          </div>
+                        </div>
+                        <a
+                          href="https://docs.arc.network/"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex text-sm text-purple-300 hover:text-purple-200 transition-colors"
+                        >
+                          👉 Read more about Arc
+                        </a>
+                      </div>
+
+                      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-semibold bg-gradient-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
+                              Circle
+                            </p>
+                            <p className="mt-2 text-sm text-gray-300 leading-relaxed">
+                              Circle is a global fintech company behind USDC, providing regulated, transparent, and programmable digital money
+                              infrastructure for businesses and developers.
+                            </p>
+                          </div>
+                        </div>
+                        <a
+                          href="https://www.circle.com/en/usdc"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex text-sm text-purple-300 hover:text-purple-200 transition-colors"
+                        >
+                          👉 Read more about Circle
+                        </a>
+                      </div>
+                    </div>
+                  )}
               </div>
             </div>
           ))}
