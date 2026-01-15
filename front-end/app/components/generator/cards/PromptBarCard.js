@@ -7,14 +7,16 @@ export default function PromptBarCard({ item }) {
         {/* Left: Video Preview */}
         <div className="relative">
           <div className="aspect-video bg-gradient-to-br from-purple-500/20 via-blue-500/20 to-cyan-500/20 rounded-xl border border-gray-700 overflow-hidden group relative">
-            {/* Video Thumbnail */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-24 h-24 gradient-purple-blue rounded-full flex items-center justify-center opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all cursor-pointer shadow-lg">
-                <svg className="w-12 h-12 text-white ml-1" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                </svg>
-              </div>
-            </div>
+            {/* Autoplay looping preview video */}
+            <video
+              className="absolute inset-0 w-full h-full object-cover"
+              src="/assets/video/city.mp4"
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="metadata"
+            />
 
             {/* Top Right - Format Label */}
             <div className="absolute top-4 right-4 flex items-center gap-2">
