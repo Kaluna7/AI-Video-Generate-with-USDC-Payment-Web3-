@@ -38,6 +38,7 @@ export default function AppHeader() {
   const setUsdcBalance = useAuthStore((state) => state.setUsdcBalance);
   const setWalletAddress = useAuthStore((state) => state.setWalletAddress);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [chainId, setChainId] = useState('');
 
   const ensureArcTestnet = useCallback(async () => {
     if (!window?.ethereum) throw new Error('MetaMask not found');
@@ -74,8 +75,9 @@ export default function AppHeader() {
   const refreshArcBalance = useCallback(async (address) => {
     if (!window?.ethereum || !address) return;
     try {
-      const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-      if (chainId?.toLowerCase() !== ARC_TESTNET.chainIdHex.toLowerCase()) return;
+      const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+      setChainId(currentChainId || '');
+      if (currentChainId?.toLowerCase() !== ARC_TESTNET.chainIdHex.toLowerCase()) return;
       const balHex = await window.ethereum.request({
         method: 'eth_getBalance',
         params: [address, 'latest'],
@@ -140,15 +142,31 @@ export default function AppHeader() {
       if (next) refreshArcBalance(next);
     };
 
-    const onChainChanged = () => {
+    const onChainChanged = (nextChainId) => {
+      setChainId(nextChainId || '');
       if (walletAddress) refreshArcBalance(walletAddress);
     };
 
     window.ethereum.on?.('accountsChanged', onAccountsChanged);
     window.ethereum.on?.('chainChanged', onChainChanged);
+    // Initial chain id
+    window.ethereum.request?.({ method: 'eth_chainId' }).then((id) => setChainId(id || '')).catch(() => {});
+
+    // Auto-refresh balance while connected (helps after faucet top-up)
+    const interval = setInterval(() => {
+      if (walletAddress) refreshArcBalance(walletAddress);
+    }, 5000);
+
+    const onFocus = () => {
+      if (walletAddress) refreshArcBalance(walletAddress);
+    };
+    window.addEventListener('focus', onFocus);
+
     return () => {
       window.ethereum.removeListener?.('accountsChanged', onAccountsChanged);
       window.ethereum.removeListener?.('chainChanged', onChainChanged);
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
     };
   }, [walletAddress, setWalletAddress, refreshArcBalance]);
 
@@ -183,6 +201,11 @@ export default function AppHeader() {
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                 <span className="text-xs text-white font-mono hidden sm:inline">{formatAddress(walletAddress)}</span>
                 <span className="text-xs text-white font-mono sm:hidden">{formatAddress(walletAddress)}</span>
+                {chainId && chainId.toLowerCase() !== ARC_TESTNET.chainIdHex.toLowerCase() && (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/30 text-yellow-300 hidden sm:inline">
+                    Wrong network
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={async () => {
