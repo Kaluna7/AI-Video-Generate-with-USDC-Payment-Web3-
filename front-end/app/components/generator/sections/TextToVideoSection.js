@@ -26,6 +26,7 @@ export default function TextToVideoSection() {
       headline: 'Fast, Seamless, and High-quality AI Video Generation',
       description: 'With instant previews and fast rendering, PrimeStudio lets you create more and wait less — the best text to video AI generator produces smooth, high-quality AI videos in no time.',
       prompt: 'A baby bird hides under its mother\'s protective wings during a storm',
+      videoSrc: '/assets/video/ferrari.mp4',
       videoTitle: 'Nature Scene',
       videoDuration: '15s',
       videoFormat: 'HD',
