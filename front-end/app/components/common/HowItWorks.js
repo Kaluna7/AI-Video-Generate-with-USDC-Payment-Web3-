@@ -76,7 +76,23 @@ export default function HowItWorks() {
                           rel="noreferrer"
                           className="mt-2 inline-flex text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
                         >
-                          💧 Testnet faucet (get USDC)
+                          💧 Testnet faucet (get USDC) — Circle
+                        </a>
+                        <a
+                          href="https://www.easyfaucetarc.xyz/"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
+                        >
+                          💧 Testnet faucet (backup) — Easy Faucet
+                        </a>
+                        <a
+                          href="https://www.oku.xyz/faucet"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
+                        >
+                          💧 Testnet faucet (backup) — Oku
                         </a>
                       </div>
 

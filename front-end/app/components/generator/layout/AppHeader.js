@@ -4,7 +4,11 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '../../../store/authStore';
 
-const ARC_TESTNET_FAUCET_URL = 'https://faucet.circle.com';
+const ARC_TESTNET_FAUCETS = [
+  { label: 'Circle Faucet', url: 'https://faucet.circle.com' },
+  { label: 'Easy Faucet (Arc)', url: 'https://www.easyfaucetarc.xyz/' },
+  { label: 'Oku Faucet', url: 'https://www.oku.xyz/faucet' },
+];
 const ARC_TESTNET = {
   chainIdDec: 5042002,
   chainIdHex: '0x4cef52',
@@ -223,25 +227,49 @@ export default function AppHeader() {
               </button>
             )}
 
-            {/* Arc Testnet Faucet */}
-            <a
-              href={ARC_TESTNET_FAUCET_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors"
-              title="Get USDC on Arc testnet (faucet)"
-            >
-              <svg className="w-4 h-4 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 16.5a4 4 0 004 4h2a4 4 0 004-4c0-1.657-.895-3-2-4-1.105-1-2-2.343-2-4a4 4 0 00-8 0c0 1.657-.895 3-2 4-1.105 1-2 2.343-2 4z"
-                />
-              </svg>
-              <span className="text-xs text-gray-300 hidden sm:inline">Faucet</span>
-              <span className="text-xs text-gray-300 sm:hidden">USDC</span>
-            </a>
+            {/* Arc Testnet Faucet (with fallbacks) */}
+            <div className="relative group">
+              <a
+                href={ARC_TESTNET_FAUCETS[0].url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors"
+                title="Get USDC on Arc testnet (faucet)"
+              >
+                <svg className="w-4 h-4 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 16.5a4 4 0 004 4h2a4 4 0 004-4c0-1.657-.895-3-2-4-1.105-1-2-2.343-2-4a4 4 0 00-8 0c0 1.657-.895 3-2 4-1.105 1-2 2.343-2 4z"
+                  />
+                </svg>
+                <span className="text-xs text-gray-300 hidden sm:inline">Faucet</span>
+                <span className="text-xs text-gray-300 sm:hidden">USDC</span>
+                <svg className="w-3 h-3 text-gray-400 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </a>
+
+              <div className="hidden group-hover:block absolute right-0 top-full mt-2 w-56 rounded-xl border border-white/10 bg-black/90 backdrop-blur-md shadow-xl overflow-hidden z-50">
+                <div className="px-3 py-2 text-[11px] text-gray-400 border-b border-white/10">
+                  Arc Testnet USDC faucets
+                </div>
+                <div className="py-1">
+                  {ARC_TESTNET_FAUCETS.map((f) => (
+                    <a
+                      key={f.url}
+                      href={f.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block px-3 py-2 text-sm text-gray-200 hover:bg-white/5 transition-colors"
+                    >
+                      {f.label}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
