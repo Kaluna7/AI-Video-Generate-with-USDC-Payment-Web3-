@@ -28,6 +28,7 @@ export default function CreateVideoPanel({
 }) {
   const [isEnhanceModalOpen, setIsEnhanceModalOpen] = useState(false);
   const [enhanceError, setEnhanceError] = useState('');
+  const PROMPT_MAX_LEN = 1200;
 
   const handleEnhanceGenerate = async (idea) => {
     setEnhanceError('');
@@ -62,10 +63,10 @@ export default function CreateVideoPanel({
                 className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none"
                 rows={4}
                 placeholder="Enter your video description..."
-                maxLength={500}
+                maxLength={PROMPT_MAX_LEN}
               />
               <div className="flex items-center justify-between mt-2">
-                <span className="text-xs text-gray-500">{prompt.length}/500</span>
+                <span className="text-xs text-gray-500">{prompt.length}/{PROMPT_MAX_LEN}</span>
                 <button
                   onClick={() => setIsEnhanceModalOpen(true)}
                   className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
@@ -96,10 +97,10 @@ export default function CreateVideoPanel({
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none"
                   rows={4}
                   placeholder="Enter your video description..."
-                  maxLength={500}
+                  maxLength={PROMPT_MAX_LEN}
                 />
                 <div className="flex items-center justify-between mt-2">
-                  <span className="text-xs text-gray-500">{prompt.length}/500</span>
+                  <span className="text-xs text-gray-500">{prompt.length}/{PROMPT_MAX_LEN}</span>
                   <button
                     onClick={() => setIsEnhanceModalOpen(true)}
                     className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
