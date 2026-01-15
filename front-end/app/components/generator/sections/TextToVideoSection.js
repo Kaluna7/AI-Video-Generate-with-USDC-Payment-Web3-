@@ -35,6 +35,7 @@ export default function TextToVideoSection() {
       headline: 'Customize with a Variety of Styles',
       description: 'Choose the AI video style you want to generate, whether it\'s Anime, Realistic, Cinematic, or Abstract. PrimeStudio offers diverse style options to match your creative vision.',
       prompt: 'Anime style character with vibrant purple hair and cherry blossoms',
+      videoSrc: '/assets/video/samoyed.mp4',
       videoTitle: 'Anime Style',
       videoDuration: '12s',
       videoFormat: 'MP4',

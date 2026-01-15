@@ -1,6 +1,8 @@
 'use client';
 
 export default function PromptBarCard({ item }) {
+  const videoSrc = item?.videoSrc || '/assets/video/city.mp4';
+
   return (
     <div className="w-full bg-[#0b0f14]/95 rounded-3xl border border-white/10 overflow-hidden hover:border-purple-500/40 transition-all shadow-2xl">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
@@ -10,7 +12,7 @@ export default function PromptBarCard({ item }) {
             {/* Autoplay looping preview video */}
             <video
               className="absolute inset-0 w-full h-full object-cover"
-              src="/assets/video/city.mp4"
+              src={videoSrc}
               autoPlay
               loop
               muted
