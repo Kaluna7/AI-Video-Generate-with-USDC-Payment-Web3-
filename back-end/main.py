@@ -146,8 +146,10 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
         "- include a clear mini-arc (beginning → middle → ending)\n"
         "- include a main character/subject + goal + obstacle/twist + resolution\n"
         "- include setting, key actions, camera movement, lighting, mood, and pacing\n"
+        "If the user references copyrighted IP (e.g., famous anime series or specific named powers), rewrite it into an original concept with the same vibe.\n"
+        "Example rewrite: 'two rival fighters with distinct mystical eye powers' (describe colors/shapes) instead of named anime abilities.\n"
         "Avoid mentioning brands or copyrighted characters.\n"
-        "Keep it under 450 characters.\n"
+        "Write in 2–4 full sentences (not fragments). Keep it under 900 characters.\n"
     )
     user = f"Short idea: {idea}"
     if base:
@@ -159,7 +161,7 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
         ],
         "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 256,
+            "maxOutputTokens": 512,
         },
     }
 
@@ -222,8 +224,8 @@ def _gemini_generate_prompt(idea: str, existing_prompt: Optional[str] = None) ->
     out = (text or "").strip()
     # Safety: enforce length and single-line-ish output.
     out = " ".join(out.split())
-    if len(out) > 500:
-        out = out[:500].rstrip()
+    if len(out) > 900:
+        out = out[:900].rstrip()
     if not out:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Gemini returned empty prompt")
     return out
