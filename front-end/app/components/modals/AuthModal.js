@@ -28,7 +28,7 @@ export default function AuthModal() {
     mutationFn: registerUser,
     onSuccess: () => {
       setError('');
-      alert('Registration successful! Please login.');
+      alert('Account created! Please sign in.');
       setActiveTab('login');
       reset();
     },
@@ -120,30 +120,6 @@ export default function AuthModal() {
             Sign in with Google
           </button>
 
-          {/* Tabs */}
-          <div className="flex gap-2 mb-6">
-            <button
-              onClick={() => handleTabChange('login')}
-              className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
-                activeTab === 'login'
-                  ? 'gradient-purple-blue text-white'
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              Login
-            </button>
-            <button
-              onClick={() => handleTabChange('register')}
-              className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
-                activeTab === 'register'
-                  ? 'gradient-purple-blue text-white'
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              Register
-            </button>
-          </div>
-
           {/* Error message */}
           {error && (
             <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
@@ -228,8 +204,8 @@ export default function AuthModal() {
               {loginMutation.isPending || registerMutation.isPending
                 ? 'Processing...'
                 : activeTab === 'login'
-                ? 'Login'
-                : 'Register'}
+                ? 'Continue'
+                : 'Create account'}
             </button>
           </form>
 
@@ -237,12 +213,12 @@ export default function AuthModal() {
           <p className="mt-6 text-center text-sm text-gray-400">
             {activeTab === 'login' ? (
               <>
-                Don&apos;t have an account?{' '}
+                New to PrimeStudio?{' '}
                 <button
                   onClick={() => handleTabChange('register')}
                   className="text-purple-400 hover:text-purple-300 transition-colors"
                 >
-                  Register
+                  Create an account
                 </button>
               </>
             ) : (
@@ -252,7 +228,7 @@ export default function AuthModal() {
                   onClick={() => handleTabChange('login')}
                   className="text-purple-400 hover:text-purple-300 transition-colors"
                 >
-                  Login
+                  Sign in
                 </button>
               </>
             )}
