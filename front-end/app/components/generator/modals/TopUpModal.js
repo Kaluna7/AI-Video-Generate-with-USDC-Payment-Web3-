@@ -103,7 +103,9 @@ export default function TopUpModal() {
                 setError('');
                 setTxHash('');
                 if (!treasury) {
-                  setError('Treasury address not configured. Set NEXT_PUBLIC_ARC_TREASURY_ADDRESS and restart frontend.');
+                  setError(
+                    'Treasury address not configured. Add NEXT_PUBLIC_ARC_TREASURY_ADDRESS to front-end/.env.local (no quotes) and restart `pnpm dev`.'
+                  );
                   return;
                 }
                 const n = Number.parseFloat(amount);
