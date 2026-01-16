@@ -23,6 +23,12 @@ export default function TopUpModal() {
   const treasury = process.env.NEXT_PUBLIC_ARC_TREASURY_ADDRESS || '';
   const coinsPerUsdc = 100;
 
+  const claimWithTxHash = async (hash) => {
+    await claimTopUp({ tx_hash: hash });
+    const bal = await getCoinBalance();
+    if (bal && typeof bal.coins === 'number') setCoinBalance(bal.coins);
+  };
+
   const coinsPreview = useMemo(() => {
     const n = Number.parseFloat(amount);
     if (Number.isNaN(n) || n <= 0) return 0;
@@ -84,8 +90,40 @@ export default function TopUpModal() {
           </div>
 
           {txHash && (
-            <div className="mt-4 p-3 bg-gray-800/40 border border-gray-700 rounded-lg text-xs text-gray-300 font-mono break-all">
-              Tx: {txHash}
+            <div className="mt-4">
+              <div className="p-3 bg-gray-800/40 border border-gray-700 rounded-lg text-xs text-gray-300 font-mono break-all">
+                Tx: {txHash}
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <p className="text-xs text-gray-400">
+                  If your transfer succeeded but coins didn&apos;t update, click <span className="text-white">Claim coins</span>.
+                </p>
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={async () => {
+                    setError('');
+                    if (!txHash) return;
+                    setIsLoading(true);
+                    try {
+                      await claimWithTxHash(txHash);
+                      closeTopUpModal();
+                    } catch (e) {
+                      const msg = e?.message || 'Claim failed';
+                      if (String(msg).includes('ARC_TREASURY_ADDRESS is not set')) {
+                        setError('Backend is missing ARC_TREASURY_ADDRESS. Add it to back-end/.env and restart backend, then click Claim coins again.');
+                      } else {
+                        setError(msg);
+                      }
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  }}
+                  className="shrink-0 px-3 py-2 rounded-lg bg-gray-700 text-white text-xs font-semibold hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? 'Claiming…' : 'Claim coins'}
+                </button>
+              </div>
             </div>
           )}
 
@@ -125,13 +163,16 @@ export default function TopUpModal() {
                   const receipt = await waitForTxReceipt(hash, { timeoutMs: 180000, pollMs: 2000 });
                   if (!receipt || receipt.status !== '0x1') throw new Error('Transaction failed');
 
-                  await claimTopUp({ tx_hash: hash });
-                  const bal = await getCoinBalance();
-                  if (bal && typeof bal.coins === 'number') setCoinBalance(bal.coins);
+                  await claimWithTxHash(hash);
 
                   closeTopUpModal();
                 } catch (e) {
-                  setError(e?.message || 'Top up failed');
+                  const msg = e?.message || 'Top up failed';
+                  if (String(msg).includes('ARC_TREASURY_ADDRESS is not set')) {
+                    setError('Backend is missing ARC_TREASURY_ADDRESS. Add it to back-end/.env and restart backend, then click Claim coins.');
+                  } else {
+                    setError(msg);
+                  }
                 } finally {
                   setIsLoading(false);
                 }
