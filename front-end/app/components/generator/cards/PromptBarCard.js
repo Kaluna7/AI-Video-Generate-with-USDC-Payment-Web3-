@@ -9,9 +9,9 @@ export default function PromptBarCard({ item }) {
 
   return (
     <div className="w-full bg-[#06080c]/95 rounded-3xl border border-white/10 overflow-hidden hover:border-purple-500/40 transition-all shadow-2xl">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 lg:items-start">
         {/* Left: Video Preview */}
-        <div className="relative">
+        <div className="relative w-full lg:pt-4">
           <div className="aspect-video bg-[#0a0d12] rounded-xl border border-white/10 overflow-hidden group relative">
             {/* Autoplay looping preview video */}
             <video
@@ -27,7 +27,7 @@ export default function PromptBarCard({ item }) {
         </div>
 
         {/* Right: Text Content */}
-        <div className="flex flex-col justify-center">
+        <div className="flex flex-col justify-start">
           <h3 className="inline-block text-2xl md:text-3xl font-bold bg-gradient-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent mb-3 leading-tight">
             {item.headline}
           </h3>

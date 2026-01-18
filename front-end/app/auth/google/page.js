@@ -27,6 +27,11 @@ export default function GoogleAuthCallbackPage() {
     }
 
     localStorage.setItem('access_token', token);
+    
+    // Also set cookie with 1 day expiry
+    const expires = new Date();
+    expires.setTime(expires.getTime() + 1 * 24 * 60 * 60 * 1000);
+    document.cookie = `access_token=${token};expires=${expires.toUTCString()};path=/;SameSite=Lax`;
 
     (async () => {
       try {

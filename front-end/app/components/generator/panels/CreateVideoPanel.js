@@ -18,10 +18,22 @@ export default function CreateVideoPanel({
   setResolution,
   frameRate,
   setFrameRate,
+  videoProvider,
+  setVideoProvider,
   veoModel,
   setVeoModel,
   veoAspectRatio,
   setVeoAspectRatio,
+  soraAspectRatio,
+  setSoraAspectRatio,
+  soraQuality,
+  setSoraQuality,
+  soraWatermark,
+  setSoraWatermark,
+  soraImageUrls,
+  setSoraImageUrls,
+  klingModel,
+  setKlingModel,
   aiEnhancement,
   setAiEnhancement,
   onGenerate,
@@ -44,6 +56,11 @@ export default function CreateVideoPanel({
     { value: 'veo3', label: 'veo3 (HQ)', price: 180 },
   ];
   const aspectRatios = ['16:9', '9:16', 'Auto'];
+  const soraQualities = [
+    { value: 'standard', label: 'standard', price: 25 },
+    { value: 'hd', label: 'hd (HQ)', price: 180 },
+  ];
+  const soraAspectRatios = ['landscape', 'portrait'];
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -116,46 +133,163 @@ export default function CreateVideoPanel({
           )}
         </div>
 
-        {/* Veo 3.1 Settings */}
+        {/* Provider Settings */}
         <div className="bg-gray-800/50 rounded-xl p-5 border border-gray-700">
-          <h3 className="text-sm font-semibold text-white mb-3">Veo 3.1 Settings</h3>
+          <h3 className="text-sm font-semibold text-white mb-3">Provider Settings</h3>
 
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-gray-400 mb-2">Model (credits)</label>
-              <div className="flex gap-2">
-                {veoModels.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => setVeoModel?.(m.value)}
-                    className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-medium transition-all ${
-                      (veoModel || 'veo3-fast') === m.value
-                        ? 'gradient-purple-blue text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    {m.label}
-                    <span className="block text-[10px] opacity-80 mt-0.5">{m.price} coins</span>
-                  </button>
-                ))}
-              </div>
+              <label className="block text-xs text-gray-400 mb-2">Provider</label>
+              <select
+                value={videoProvider || 'veo3'}
+                onChange={(e) => setVideoProvider?.(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+              >
+                <option value="veo3">Veo 3.1</option>
+                <option value="sora2">Sora 2</option>
+                <option value="kling">Kling AI</option>
+              </select>
               <p className="text-[11px] text-gray-500 mt-2">
-                Coins are deducted from your in-app balance (Top Up once, then generate).
+                Backend must be configured for the chosen provider (or accept per-request provider override).
               </p>
             </div>
 
-            <div>
-              <label className="block text-xs text-gray-400 mb-2">Aspect Ratio</label>
-              <select
-                value={veoAspectRatio || '16:9'}
-                onChange={(e) => setVeoAspectRatio?.(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
-              >
-                {aspectRatios.map((ar) => (
-                  <option key={ar} value={ar}>{ar}</option>
-                ))}
-              </select>
-            </div>
+            { (videoProvider || 'veo3') === 'sora2' ? (
+              <>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-2">Quality (credits)</label>
+                  <div className="flex gap-2">
+                    {soraQualities.map((m) => (
+                      <button
+                        key={m.value}
+                        onClick={() => setSoraQuality?.(m.value)}
+                        className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-medium transition-all ${
+                          (soraQuality || 'standard') === m.value
+                            ? 'gradient-purple-blue text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        {m.label}
+                        <span className="block text-[10px] opacity-80 mt-0.5">{m.price} coins</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-2">Aspect Ratio</label>
+                    <select
+                      value={soraAspectRatio || 'landscape'}
+                      onChange={(e) => setSoraAspectRatio?.(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                    >
+                      {soraAspectRatios.map((ar) => (
+                        <option key={ar} value={ar}>{ar}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-2">Watermark (optional)</label>
+                    <input
+                      value={soraWatermark || ''}
+                      onChange={(e) => setSoraWatermark?.(e.target.value)}
+                      placeholder="e.g. My Brand"
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-400 mb-2">Image URLs (optional, one per line)</label>
+                  <textarea
+                    value={soraImageUrls || ''}
+                    onChange={(e) => setSoraImageUrls?.(e.target.value)}
+                    rows={3}
+                    placeholder={'https://example.com/image1.jpg\nhttps://example.com/image2.jpg'}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-2">
+                    Leave empty for text-to-video. Provide public image URLs for image-to-video.
+                  </p>
+                </div>
+              </>
+            ) : (videoProvider || 'veo3') === 'kling' ? (
+              <>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-2">Model Version (coins)</label>
+                  <select
+                    value={klingModel || 'v2-1-master'}
+                    onChange={(e) => setKlingModel?.(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  >
+                    <option value="v1-0">V1.0 (25 coins)</option>
+                    <option value="v1-6">V1.6 (25 coins)</option>
+                    <option value="v2-0">V2.0 Master (180 coins)</option>
+                    <option value="v2-1-master">V2.1 Master (180 coins)</option>
+                    <option value="v2-5-turbo">V2.5 Turbo (180 coins)</option>
+                    <option value="v2-6">V2.6 (180 coins)</option>
+                  </select>
+                  <p className="text-[11px] text-gray-500 mt-2">
+                    Supports Text to Video, Image to Video. V2.6 supports sound generation.
+                  </p>
+                </div>
+
+                {activeTab === 'image' && (
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-2">Image URL (for image-to-video)</label>
+                    <textarea
+                      value={soraImageUrls || ''}
+                      onChange={(e) => setSoraImageUrls?.(e.target.value)}
+                      rows={2}
+                      placeholder="https://example.com/image.jpg"
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none"
+                    />
+                    <p className="text-[11px] text-gray-500 mt-2">
+                      Provide public image URL for image-to-video generation.
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-2">Model (credits)</label>
+                  <div className="flex gap-2">
+                    {veoModels.map((m) => (
+                      <button
+                        key={m.value}
+                        onClick={() => setVeoModel?.(m.value)}
+                        className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-medium transition-all ${
+                          (veoModel || 'veo3-fast') === m.value
+                            ? 'gradient-purple-blue text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        {m.label}
+                        <span className="block text-[10px] opacity-80 mt-0.5">{m.price} coins</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-2">
+                    Coins are deducted from your in-app balance (Top Up once, then generate).
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-400 mb-2">Aspect Ratio</label>
+                  <select
+                    value={veoAspectRatio || '16:9'}
+                    onChange={(e) => setVeoAspectRatio?.(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-purple-500"
+                  >
+                    {aspectRatios.map((ar) => (
+                      <option key={ar} value={ar}>{ar}</option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

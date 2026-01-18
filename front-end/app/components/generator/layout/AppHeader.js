@@ -42,6 +42,7 @@ export default function AppHeader() {
   const openTopUpModal = useAuthStore((state) => state.openTopUpModal);
   const [isConnecting, setIsConnecting] = useState(false);
   const [chainId, setChainId] = useState('');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const ensureArcTestnet = useCallback(async () => {
     if (!window?.ethereum) throw new Error('MetaMask not found');
@@ -173,51 +174,64 @@ export default function AppHeader() {
     };
   }, [walletAddress, setWalletAddress, refreshArcBalance]);
 
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (isMenuOpen && !event.target.closest('header')) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    if (isMenuOpen) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [isMenuOpen]);
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-b border-gray-800">
-      <div className="container mx-auto px-6 py-4">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <h1 className="text-2xl font-bold gradient-text">PrimeStudio</h1>
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
+          {/* Left Side: Logo */}
+          <Link href="/" className="flex items-center gap-1.5 sm:gap-2 hover:opacity-80 transition-opacity shrink-0">
+            <h1 className="text-lg sm:text-xl md:text-2xl font-bold gradient-text">PrimeStudio</h1>
           </Link>
 
-          {/* Right Side - USDC Balance & Wallet */}
-          <div className="flex items-center gap-3">
-            {/* Coin Balance */}
+          {/* Right Side: Coin Balance + Desktop Wallet & Faucet / Mobile Hamburger */}
+          <div className="flex items-center gap-2 md:gap-2 lg:gap-3 shrink-0">
+            {/* Coin Balance - Always Visible */}
             <button
               type="button"
               onClick={openTopUpModal}
-              className="relative flex items-center gap-2 bg-gray-800/50 pl-2 pr-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors overflow-visible"
+              className="relative flex items-center gap-1 sm:gap-1.5 md:gap-2 bg-gray-800/50 pl-1.5 sm:pl-2 pr-2 sm:pr-2.5 md:pr-3 py-1 sm:py-1.5 md:py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors overflow-visible"
               title="Top up coins"
             >
               {/* Oversized 3D coin that intentionally overflows the pill */}
-              <span className="relative -ml-3">
+              <span className="relative">
                 <Image
                   src="/assets/images/coin-3d.svg"
                   alt="Coin"
-                  width={34}
-                  height={34}
-                  className="-translate-y-1 drop-shadow-lg"
+                  width={30}
+                  height={30}
+                  className="w-5 h-5 sm:w-6 sm:h-6 md:w-[30px] md:h-[30px] -translate-y-1 drop-shadow-lg"
                 />
               </span>
-              <span className="text-sm font-semibold text-white">{Number(coinBalance || 0)}</span>
-              <span className="text-xs text-gray-400 hidden sm:inline">Coins</span>
-              <span className="text-xs text-gray-400 sm:hidden">C</span>
-              <span className="text-xs text-purple-300 hidden sm:inline">Top Up</span>
+              <span className="text-xs sm:text-sm font-semibold text-white">{Number(coinBalance || 0)}</span>
+              <span className="text-[10px] sm:text-xs text-gray-400 hidden sm:inline">Coins</span>
+              <span className="text-[10px] sm:text-xs text-purple-300 hidden md:inline">Top Up</span>
             </button>
-
-            {/* Wallet Connection */}
-            {walletAddress ? (
-              <div
-                className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 group relative"
-                title={walletAddress}
-              >
+            {/* Desktop: Wallet & Faucet */}
+            <div className="hidden md:flex items-center gap-2 lg:gap-3">
+              {/* Wallet Connection */}
+              {walletAddress ? (
+                <div
+                  className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 group relative"
+                  title={walletAddress}
+                >
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span className="text-xs text-white font-mono hidden sm:inline">{formatAddress(walletAddress)}</span>
-                <span className="text-xs text-white font-mono sm:hidden">{formatAddress(walletAddress)}</span>
+                <span className="text-xs text-white font-mono">{formatAddress(walletAddress)}</span>
                 {chainId && chainId.toLowerCase() !== ARC_TESTNET.chainIdHex.toLowerCase() && (
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/30 text-yellow-300 hidden sm:inline">
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/30 text-yellow-300">
                     Wrong network
                   </span>
                 )}
@@ -268,12 +282,176 @@ export default function AppHeader() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleConnectWallet}
+                  disabled={isConnecting}
+                  className="flex items-center gap-2 bg-gray-800/50 px-4 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isConnecting ? (
+                    <>
+                      <svg className="animate-spin w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span className="text-xs text-gray-300">Connecting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      <span className="text-xs text-gray-300">Connect (Arc Testnet)</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Arc Testnet Faucet (with fallbacks) */}
+              <div className="relative group">
+                <a
+                  href={ARC_TESTNET_FAUCETS[0].url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors"
+                  title="Get USDC on Arc testnet (faucet)"
+                >
+                  <svg className="w-4 h-4 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16.5a4 4 0 004 4h2a4 4 0 004-4c0-1.657-.895-3-2-4-1.105-1-2-2.343-2-4a4 4 0 00-8 0c0 1.657-.895 3-2 4-1.105 1-2 2.343-2 4z"
+                    />
+                  </svg>
+                  <span className="text-xs text-gray-300">Faucet</span>
+                  <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </a>
+
+                <div className="hidden group-hover:block absolute right-0 top-full mt-2 w-56 rounded-xl border border-white/10 bg-black/90 backdrop-blur-md shadow-xl overflow-hidden z-50">
+                  <div className="px-3 py-2 text-[11px] text-gray-400 border-b border-white/10">
+                    Arc Testnet USDC faucets
+                  </div>
+                  <div className="py-1">
+                    {ARC_TESTNET_FAUCETS.map((f) => (
+                      <a
+                        key={f.url}
+                        href={f.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block px-3 py-2 text-sm text-gray-200 hover:bg-white/5 transition-colors"
+                      >
+                        {f.label}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Mobile: Hamburger Menu Button */}
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="md:hidden p-2 text-gray-300 hover:text-white transition-colors"
+              aria-label="Toggle menu"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {isMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Menu Dropdown */}
+        {isMenuOpen && (
+          <div className="md:hidden mt-3 pb-3 border-t border-gray-800 pt-3 space-y-2 animate-in slide-in-from-top-2 duration-200">
+            {/* Wallet Connection */}
+            {walletAddress ? (
+              <div className="bg-gray-800/50 px-4 py-3 rounded-lg border border-gray-700 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-sm text-white font-mono">{formatAddress(walletAddress)}</span>
+                  </div>
+                  {chainId && chainId.toLowerCase() !== ARC_TESTNET.chainIdHex.toLowerCase() && (
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/30 text-yellow-300">
+                      Wrong network
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-700">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(walletAddress);
+                      } catch {
+                        try {
+                          const el = document.createElement('textarea');
+                          el.value = walletAddress;
+                          document.body.appendChild(el);
+                          el.select();
+                          document.execCommand('copy');
+                          document.body.removeChild(el);
+                        } catch {
+                          // no-op
+                        }
+                      }
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-gray-300 hover:text-white hover:bg-white/5 rounded transition-colors"
+                    title="Copy wallet address"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h10a2 2 0 012 2v10a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 17H5a2 2 0 01-2-2V5a2 2 0 012-2h10a2 2 0 012 2v1" />
+                    </svg>
+                    Copy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      refreshArcBalance(walletAddress);
+                      setIsMenuOpen(false);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-gray-300 hover:text-white hover:bg-white/5 rounded transition-colors"
+                    title="Refresh Arc testnet balance"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v6h6M20 20v-6h-6" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 8a8 8 0 00-14.828-2M4 16a8 8 0 0014.828 2" />
+                    </svg>
+                    Refresh
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleDisconnectWallet();
+                      setIsMenuOpen(false);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
+                    title="Disconnect Wallet"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Disconnect
+                  </button>
+                </div>
               </div>
             ) : (
               <button
-                onClick={handleConnectWallet}
+                onClick={() => {
+                  handleConnectWallet();
+                  setIsMenuOpen(false);
+                }}
                 disabled={isConnecting}
-                className="flex items-center gap-2 bg-gray-800/50 px-4 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 bg-gray-800/50 px-4 py-3 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isConnecting ? (
                   <>
@@ -281,65 +459,45 @@ export default function AppHeader() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span className="text-xs text-gray-300">Connecting...</span>
+                    <span className="text-sm text-gray-300">Connecting...</span>
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
-                    <span className="text-xs text-gray-300 hidden sm:inline">Connect (Arc Testnet)</span>
-                    <span className="text-xs text-gray-300 sm:hidden">Connect</span>
+                    <span className="text-sm text-gray-300">Connect Wallet (Arc Testnet)</span>
                   </>
                 )}
               </button>
             )}
 
-            {/* Arc Testnet Faucet (with fallbacks) */}
-            <div className="relative group">
-              <a
-                href={ARC_TESTNET_FAUCETS[0].url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-purple-500 transition-colors"
-                title="Get USDC on Arc testnet (faucet)"
-              >
-                <svg className="w-4 h-4 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 16.5a4 4 0 004 4h2a4 4 0 004-4c0-1.657-.895-3-2-4-1.105-1-2-2.343-2-4a4 4 0 00-8 0c0 1.657-.895 3-2 4-1.105 1-2 2.343-2 4z"
-                  />
-                </svg>
-                <span className="text-xs text-gray-300 hidden sm:inline">Faucet</span>
-                <span className="text-xs text-gray-300 sm:hidden">USDC</span>
-                <svg className="w-3 h-3 text-gray-400 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </a>
-
-              <div className="hidden group-hover:block absolute right-0 top-full mt-2 w-56 rounded-xl border border-white/10 bg-black/90 backdrop-blur-md shadow-xl overflow-hidden z-50">
-                <div className="px-3 py-2 text-[11px] text-gray-400 border-b border-white/10">
-                  Arc Testnet USDC faucets
-                </div>
-                <div className="py-1">
-                  {ARC_TESTNET_FAUCETS.map((f) => (
-                    <a
-                      key={f.url}
-                      href={f.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block px-3 py-2 text-sm text-gray-200 hover:bg-white/5 transition-colors"
-                    >
-                      {f.label}
-                    </a>
-                  ))}
-                </div>
-              </div>
+            {/* Arc Testnet Faucet */}
+            <div className="space-y-1">
+              <div className="px-4 py-2 text-xs text-gray-400">Arc Testnet Faucets</div>
+              {ARC_TESTNET_FAUCETS.map((f) => (
+                <a
+                  key={f.url}
+                  href={f.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-2.5 bg-gray-800/50 hover:bg-gray-800/70 border border-gray-700 hover:border-purple-500 rounded-lg transition-colors"
+                >
+                  <svg className="w-4 h-4 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16.5a4 4 0 004 4h2a4 4 0 004-4c0-1.657-.895-3-2-4-1.105-1-2-2.343-2-4a4 4 0 00-8 0c0 1.657-.895 3-2 4-1.105 1-2 2.343-2 4z"
+                    />
+                  </svg>
+                  <span className="text-sm text-gray-200">{f.label}</span>
+                </a>
+              ))}
             </div>
           </div>
-        </div>
+        )}
       </div>
       <TopUpModal />
     </header>

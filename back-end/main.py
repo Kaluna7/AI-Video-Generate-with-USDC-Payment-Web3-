@@ -1,13 +1,13 @@
 import os
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import uuid4
 
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import Column, Integer, String, DateTime, create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -511,11 +511,19 @@ class TextToVideoRequest(BaseModel):
     aspect_ratio: Optional[str] = "16:9"  # 16:9 | 9:16 | Auto
     watermark: Optional[str] = None  # string or null
 
+    # Optional override: allow frontend to choose provider per request
+    provider: Optional[str] = None  # mock | replicate | veo3 | sora2 | kling
+
     # Back-compat for older UI fields (ignored by Veo 3.1 provider)
     duration_seconds: Optional[int] = None
     resolution: Optional[str] = None
     fps: Optional[int] = None
     style: Optional[str] = None
+
+    # Sora2API-specific optional fields
+    quality: Optional[str] = None  # standard | hd
+    image_urls: Optional[List[str]] = None
+    callback_url: Optional[str] = None
 
 
 class VideoJobOut(BaseModel):
@@ -529,8 +537,40 @@ class VideoJobOut(BaseModel):
     coins_balance: Optional[int] = None
 
 
+# ==============================
+# Image generation schemas
+# ==============================
+
+
+class TextToImageRequest(BaseModel):
+    prompt: str
+    model: Optional[str] = "kling-v1"  # kling-v1, kling-v1-5, kling-v2-1, kling-v2, kling-image-o1
+    aspect_ratio: Optional[str] = "1:1"  # 1:1, 16:9, 4:3, 3:2, 2:3, 3:4, 9:16, 21:9
+
+
+class ImageToImageRequest(BaseModel):
+    prompt: str
+    image_url: str
+    image_url2: Optional[str] = None  # Second image for multi-image mode
+    model: Optional[str] = "kling-v1"  # kling-v1, kling-v1-5, kling-v2, kling-v2-new
+    mode: Optional[str] = "entire-image"  # entire-image, subject, face, restyle, multi-image
+    aspect_ratio: Optional[str] = None  # Some modes don't support aspect ratio
+
+
+class ImageJobOut(BaseModel):
+    job_id: str
+    status: str  # queued | processing | succeeded | failed
+    provider: str
+    image_url: Optional[str] = None
+    error: Optional[str] = None
+    created_at: datetime
+    coins_spent: Optional[int] = None
+    coins_balance: Optional[int] = None
+
+
 # In-memory job store (OK for hackathon / single-instance dev)
 VIDEO_JOBS: Dict[str, Dict[str, Any]] = {}
+IMAGE_JOBS: Dict[str, Dict[str, Any]] = {}
 
 
 def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> User:
@@ -538,14 +578,26 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
     Validate JWT access token and return the User record.
     Frontend should send: Authorization: Bearer <token>
     """
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No token provided")
+    
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         sub = payload.get("sub")
         if not sub:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: missing user ID")
         user_id = int(sub)
-    except (JWTError, ValueError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    except JWTError as e:
+        # More specific error messages for debugging
+        error_msg = str(e)
+        if "expired" in error_msg.lower():
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired. Please login again.")
+        elif "invalid" in error_msg.lower():
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token. Please login again.")
+        else:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Token validation failed: {error_msg}")
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: user ID format error")
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -603,9 +655,51 @@ def _get_or_create_coin_balance(db: Session, user_id: int) -> UserCoinBalance:
     return row
 
 
+def _refund_generation_coins(db: Session, user_id: int, coins: int) -> int:
+    """
+    Best-effort refund of spent coins (used when a provider fails).
+    Returns the updated balance.
+    """
+    bal = _get_or_create_coin_balance(db, user_id)
+    bal.coins = int(bal.coins or 0) + int(max(0, int(coins)))
+    db.add(bal)
+    db.commit()
+    db.refresh(bal)
+    return int(bal.coins or 0)
+
+
 def _model_cost_coins(model: Optional[str]) -> int:
     m = (model or "veo3-fast").strip().lower()
-    return 180 if m == "veo3" else 25
+    # Pricing buckets:
+    # - High quality models: 180 coins (e.g. veo3 HQ, sora-2-pro)
+    # - Default/fast models: 25 coins
+    return 180 if m in ("veo3", "sora-2-pro", "sora2-pro", "sora_pro") else 25
+
+
+def _image_model_cost_coins(model: Optional[str]) -> int:
+    """
+    Calculate coin cost for image generation based on model.
+    Pricing:
+    - kling-image-o1: 1 coin
+    - kling-v1: 2 coins
+    - kling-v1-5: 3 coins
+    - kling-v2: 5 coins
+    - kling-v2-1: 6 coins
+    - Default: 2 coins
+    """
+    m = (model or "kling-v1").strip().lower()
+    if m == "kling-image-o1" or m == "kling-imageo1":
+        return 1
+    elif m == "kling-v1":
+        return 2
+    elif m == "kling-v1-5" or m == "kling-v1.5":
+        return 3
+    elif m == "kling-v2":
+        return 5
+    elif m == "kling-v2-1" or m == "kling-v2.1":
+        return 6
+    else:
+        return 2  # Default to 2 coins
 
 
 def _replicate_headers() -> Dict[str, str]:
@@ -799,11 +893,1042 @@ def _veo3_get_download(task_id: str) -> Dict[str, Any]:
 
 
 # ==============================
+# Sora 2 provider helpers (configurable endpoints)
+# ==============================
+
+
+def _sora2_base_url() -> str:
+    # OpenAI Sora 2 API base URL
+    v = os.getenv("SORA2_BASE_URL") or "https://api.openai.com"
+    return v.strip().strip('"').strip("'").rstrip("/")
+
+
+def _sora2_api_key() -> str:
+    # OpenAI API key (can also use OPENAI_API_KEY env var)
+    v = os.getenv("SORA2_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if v:
+        v = v.strip().strip('"').strip("'")
+    if not v:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="SORA2_API_KEY or OPENAI_API_KEY is not set")
+    return v
+
+
+def _sora2_headers() -> Dict[str, str]:
+    """
+    OpenAI API headers with Bearer authentication.
+    Supports optional organization and project headers.
+    """
+    key = _sora2_api_key()
+    headers = {
+        "Authorization": f"Bearer {key}",
+    }
+    
+    # Optional: Organization ID (if using multiple organizations)
+    org_id = os.getenv("OPENAI_ORGANIZATION_ID") or os.getenv("SORA2_ORGANIZATION_ID")
+    if org_id:
+        org_id = org_id.strip().strip('"').strip("'")
+        if org_id:
+            headers["OpenAI-Organization"] = org_id
+    
+    # Optional: Project ID (if using projects)
+    project_id = os.getenv("OPENAI_PROJECT_ID") or os.getenv("SORA2_PROJECT_ID")
+    if project_id:
+        project_id = project_id.strip().strip('"').strip("'")
+        if project_id:
+            headers["OpenAI-Project"] = project_id
+    
+    return headers
+
+
+def _sora2_create_path() -> str:
+    # OpenAI Sora 2 endpoint
+    return (os.getenv("SORA2_CREATE_PATH") or "/v1/videos").strip()
+
+
+def _sora2_status_path() -> str:
+    # OpenAI Sora 2 status endpoint (will be combined with video_id)
+    return (os.getenv("SORA2_STATUS_PATH") or "/v1/videos").strip()
+
+
+def _sora2_download_path() -> str:
+    # OpenAI Sora 2 download endpoint (will be combined with video_id)
+    return (os.getenv("SORA2_DOWNLOAD_PATH") or "/v1/videos").strip()
+
+
+def _sora2_parse_id(data: Any) -> Optional[str]:
+    # OpenAI response format: { "id": "video_123", ... }
+    if isinstance(data, dict):
+        v = data.get("id")
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+def _sora2_parse_status(data: Any) -> Optional[str]:
+    # OpenAI response format: { "status": "queued|processing|completed|failed", ... }
+    if isinstance(data, dict):
+        status = data.get("status")
+        if isinstance(status, str):
+            status_lower = status.lower()
+            if status_lower in ("completed", "succeeded", "success", "done"):
+                return "succeeded"
+            if status_lower == "failed":
+                return "failed"
+            if status_lower in ("queued", "processing", "in_progress"):
+                return "processing"
+    return None
+
+
+def _sora2_parse_video_url(data: Any) -> Optional[str]:
+    # OpenAI doesn't return video URL directly in status response
+    # Video content must be downloaded from /v1/videos/{id}/content endpoint
+    # This function will return None, and we'll use _sora2_get_download() instead
+    # For now, we can construct a download URL if needed
+    if isinstance(data, dict):
+        video_id = data.get("id")
+        if isinstance(video_id, str) and video_id.strip():
+            # Return a placeholder that indicates we need to download
+            # The actual download will be handled by _sora2_get_download()
+            return f"openai://{video_id}"
+    return None
+
+
+def _sora2_assert_ok(data: Any) -> None:
+    """
+    OpenAI API uses standard HTTP status codes, so we don't need special handling here.
+    This function is kept for compatibility but does nothing for OpenAI.
+    """
+    pass
+
+
+def _sora2_create_task(
+    prompt: str,
+    aspect_ratio: str,
+    quality: str,
+    image_urls: Optional[List[str]],
+    watermark: Optional[str],
+    callback_url: Optional[str],
+    duration_seconds: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Create OpenAI Sora 2 video generation task.
+    Uses form-data format as per OpenAI API documentation.
+    """
+    # Map aspect_ratio to OpenAI size format
+    # OpenAI sizes: 720x1280, 1280x720, 1024x1792, 1792x1024
+    size_mapping = {
+        "landscape": "1280x720",
+        "portrait": "720x1280",
+        "16:9": "1280x720",
+        "9:16": "720x1280",
+    }
+    size = size_mapping.get(aspect_ratio.lower(), "720x1280")
+    
+    # Map quality to model (sora-2 or sora-2-pro)
+    model = "sora-2-pro" if quality.lower() == "hd" else "sora-2"
+    
+    # Map duration (default 4, allowed: 4, 8, 12)
+    if duration_seconds:
+        # Validate and map duration
+        if duration_seconds in [4, 8, 12]:
+            seconds = str(duration_seconds)
+        elif duration_seconds <= 4:
+            seconds = "4"
+        elif duration_seconds <= 8:
+            seconds = "8"
+        else:
+            seconds = "12"
+    else:
+        seconds = "4"  # Default per OpenAI docs
+    
+    # Prepare JSON payload for OpenAI
+    # OpenAI accepts both application/json and multipart/form-data
+    # Since we don't have file uploads (input_reference), we'll use application/json
+    # This is simpler and cleaner than multipart/form-data
+    
+    url = f"{_sora2_base_url()}{_sora2_create_path()}"
+    headers = _sora2_headers()
+    
+    # Add request ID for debugging (optional but recommended by OpenAI)
+    request_id = str(uuid4())
+    headers["X-Client-Request-Id"] = request_id
+    
+    # Set Content-Type to application/json
+    headers["Content-Type"] = "application/json"
+    
+    # Prepare JSON payload
+    json_payload = {
+        "prompt": prompt,
+        "model": model,
+        "seconds": seconds,
+        "size": size,
+    }
+    
+    # Handle input_reference (image file) if image_urls provided
+    # Note: OpenAI expects a file upload, not URL
+    # For now, we'll skip this if only URLs are provided
+    # In production, you might want to download the image first and then upload
+    # TODO: Implement image file download and upload for input_reference
+    
+    # Make the request with JSON payload
+    resp = requests.post(url, headers=headers, json=json_payload, timeout=90)
+    
+    if resp.status_code in (401, 403):
+        raise HTTPException(status_code=resp.status_code, detail=f"OpenAI Sora 2 unauthorized: {resp.text}")
+    if resp.status_code >= 400:
+        error_data = resp.json() if resp.content else {}
+        error_msg = error_data.get("error", {}).get("message", resp.text) if isinstance(error_data.get("error"), dict) else resp.text
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"OpenAI Sora 2 error ({resp.status_code}): {error_msg}")
+    
+    data = resp.json() if resp.content else {}
+    return data
+
+
+def _sora2_get_status(task_id: str) -> Dict[str, Any]:
+    """
+    Get OpenAI Sora 2 video job status.
+    Endpoint: GET /v1/videos/{video_id}
+    """
+    path = _sora2_status_path()
+    url = f"{_sora2_base_url()}{path}/{task_id}"
+    headers = _sora2_headers()
+    
+    # Add request ID for debugging
+    request_id = str(uuid4())
+    headers["X-Client-Request-Id"] = request_id
+    
+    resp = requests.get(url, headers=headers, timeout=60)
+    if resp.status_code in (401, 403):
+        request_id = resp.headers.get("x-request-id", "unknown")
+        raise HTTPException(
+            status_code=resp.status_code, 
+            detail=f"OpenAI Sora 2 unauthorized: {resp.text} (Request ID: {request_id})"
+        )
+    if resp.status_code >= 400:
+        error_data = resp.json() if resp.content else {}
+        error_msg = error_data.get("error", {}).get("message", resp.text) if isinstance(error_data.get("error"), dict) else resp.text
+        request_id = resp.headers.get("x-request-id", "unknown")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, 
+            detail=f"OpenAI Sora 2 error ({resp.status_code}): {error_msg} (Request ID: {request_id})"
+        )
+    data = resp.json() if resp.content else {}
+    return data
+
+
+def _sora2_get_download(task_id: str) -> Optional[str]:
+    """
+    Get OpenAI Sora 2 video download URL.
+    Endpoint: GET /v1/videos/{video_id}/content
+    Returns a URL that can be used to download the video.
+    For OpenAI, the content endpoint returns binary video data.
+    We'll return the direct endpoint URL that frontend can use with Authorization header.
+    """
+    # Return the OpenAI content endpoint URL
+    # Frontend will need to call this with Authorization header
+    # Or we can create a proxy endpoint in our backend
+    return f"{_sora2_base_url()}/v1/videos/{task_id}/content"
+
+
+# ==============================
+# Kling AI provider helpers
+# ==============================
+
+
+def _kling_base_url() -> str:
+    """
+    Kling AI provider base URL.
+    Default to useapi.net, can be overridden via env (e.g., cometapi.com).
+    """
+    base = os.getenv("KLING_BASE_URL") or "https://api.useapi.net"
+    base = base.strip().rstrip("/")
+    
+    # Validate that base URL is not a placeholder
+    if "your-kling-provider" in base.lower() or "example.com" in base.lower() or "placeholder" in base.lower():
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"KLING_BASE_URL is not configured. Current value: '{base}'. Please set KLING_BASE_URL in your .env file to your actual Kling AI provider's base URL (e.g., https://api.useapi.net or your provider's URL).",
+        )
+    
+    return base
+
+
+def _kling_api_key() -> str:
+    """
+    Get Kling AI API key or generate JWT token from Access Key and Secret Key.
+    Kling AI uses JWT authentication with Access Key (AK) and Secret Key (SK).
+    """
+    # Try to get pre-generated JWT token first
+    jwt_token = os.getenv("KLING_JWT_TOKEN")
+    if jwt_token:
+        jwt_token = jwt_token.strip().strip('"').strip("'")
+        if jwt_token:
+            return jwt_token
+    
+    # If JWT token not provided, try to generate from Access Key and Secret Key
+    access_key = os.getenv("KLING_ACCESS_KEY")
+    secret_key = os.getenv("KLING_SECRET_KEY")
+    
+    if access_key and secret_key:
+        access_key = access_key.strip().strip('"').strip("'")
+        secret_key = secret_key.strip().strip('"').strip("'")
+        
+        if access_key and secret_key:
+            # Generate JWT token using jose library (already imported)
+            try:
+                import time
+                
+                payload = {
+                    "iss": access_key,  # Access Key as issuer
+                    "exp": int(time.time()) + 1800,  # Expires in 30 minutes
+                    "nbf": int(time.time()) - 5  # Not before (5 seconds ago)
+                }
+                # Use jose.jwt which is already imported
+                token = jwt.encode(payload, secret_key, algorithm="HS256")
+                return token
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to generate JWT token: {str(e)}. Make sure KLING_ACCESS_KEY and KLING_SECRET_KEY are set correctly.",
+                )
+    
+    # Fallback: try KLING_API_KEY (might be a pre-generated JWT)
+    api_key = os.getenv("KLING_API_KEY")
+    if api_key:
+        api_key = api_key.strip().strip('"').strip("'")
+        if api_key:
+            return api_key
+    
+    # No valid key found
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Kling AI authentication not configured. Set either KLING_ACCESS_KEY + KLING_SECRET_KEY, or KLING_JWT_TOKEN, or KLING_API_KEY (pre-generated JWT) in your .env file.",
+    )
+
+
+def _kling_headers() -> Dict[str, str]:
+    """
+    Kling AI API headers.
+    Uses Authorization: Bearer <jwt_token> format.
+    JWT token is generated from Access Key and Secret Key, or provided directly.
+    """
+    token = _kling_api_key()
+    
+    # Ensure token is not empty
+    if not token or not token.strip():
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Kling AI authentication token is empty or invalid",
+        )
+    
+    # Clean the token
+    token = token.strip().strip('"').strip("'")
+    
+    # Remove Bearer prefix if present (we'll add it)
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    
+    # Optional: Allow custom auth header name and scheme via env vars
+    header_name = os.getenv("KLING_AUTH_HEADER_NAME", "Authorization").strip()
+    auth_scheme = os.getenv("KLING_AUTH_SCHEME", "Bearer").strip()
+    
+    # Build auth value
+    if auth_scheme:
+        auth_value = f"{auth_scheme} {token}"
+    else:
+        auth_value = f"Bearer {token}"
+    
+    headers = {
+        header_name: auth_value,
+        "Content-Type": "application/json",
+    }
+    
+    return headers
+
+
+def _kling_model_version() -> str:
+    """
+    Kling AI model version.
+    Options: kling-v1, kling-v1-6, kling-v2-master, kling-v2-1-master, kling-v2-5-turbo, kling-v2-6
+    Default: kling-v1
+    """
+    v = os.getenv("KLING_MODEL_VERSION") or "kling-v1"
+    return v.strip().lower()
+
+
+def _kling_create_task(
+    prompt: str,
+    model: Optional[str] = None,
+    image_url: Optional[str] = None,
+    duration: Optional[int] = 5,
+    negative_prompt: Optional[str] = None,
+    cfg_scale: Optional[float] = None,
+    aspect_ratio: Optional[str] = None,
+    mode: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Create a Kling AI text-to-video task.
+    
+    Official API Documentation:
+    - Endpoint: POST /v1/videos/text2video
+    - Model names: kling-v1, kling-v1-6, kling-v2-master, kling-v2-1-master, kling-v2-5-turbo, kling-v2-6
+    
+    Supports:
+    - Text to Video
+    - Image to Video (via image_url parameter)
+    
+    Model versions:
+    - kling-v1 (default)
+    - kling-v1-6
+    - kling-v2-master
+    - kling-v2-1-master
+    - kling-v2-5-turbo
+    - kling-v2-6
+    """
+    # Normalize model name to official format
+    model_name = (model or _kling_model_version()).strip().lower()
+    
+    # Map our model format to official format
+    model_mapping = {
+        "v1-0": "kling-v1",
+        "v1.0": "kling-v1",
+        "v1-5": "kling-v1-6",  # Closest match
+        "v1.5": "kling-v1-6",
+        "v1-6": "kling-v1-6",
+        "v1.6": "kling-v1-6",
+        "v2-0": "kling-v2-master",
+        "v2.0": "kling-v2-master",
+        "v2-1": "kling-v2-1-master",
+        "v2.1": "kling-v2-1-master",
+        "v2-1-standard": "kling-v2-1-master",
+        "v2-1-pro": "kling-v2-1-master",
+        "v2-1-master": "kling-v2-1-master",
+        "v2-5-turbo": "kling-v2-5-turbo",
+        "v2.5-turbo": "kling-v2-5-turbo",
+        "v2-6": "kling-v2-6",
+        "v2.6": "kling-v2-6",
+    }
+    
+    # Convert to official model name
+    if model_name in model_mapping:
+        model_name = model_mapping[model_name]
+    elif not model_name.startswith("kling-"):
+        # If not in mapping and doesn't start with kling-, default to kling-v1
+        model_name = "kling-v1"
+    
+    # Build payload according to official API documentation
+    payload: Dict[str, Any] = {
+        "model_name": model_name,
+        "prompt": prompt.strip(),
+    }
+    
+    # Add optional fields
+    if negative_prompt:
+        payload["negative_prompt"] = negative_prompt.strip()
+    
+    if aspect_ratio:
+        # Validate aspect ratio
+        valid_ratios = ["16:9", "9:16", "1:1"]
+        if aspect_ratio in valid_ratios:
+            payload["aspect_ratio"] = aspect_ratio
+        else:
+            payload["aspect_ratio"] = "16:9"  # Default
+    else:
+        payload["aspect_ratio"] = "16:9"  # Default
+    
+    if duration:
+        # Validate duration (must be 5 or 10)
+        if duration in [5, 10]:
+            payload["duration"] = str(duration)
+        else:
+            payload["duration"] = "5"  # Default
+    else:
+        payload["duration"] = "5"  # Default
+    
+    # Mode: std (standard) or pro (professional)
+    if mode and mode.lower() in ["std", "pro"]:
+        payload["mode"] = mode.lower()
+    else:
+        payload["mode"] = "std"  # Default
+    
+    # CFG scale (only for v1 models, not v2.x)
+    if cfg_scale is not None and "v2" not in model_name:
+        payload["cfg_scale"] = float(cfg_scale)
+    
+    # Image URL for image-to-video (if provided)
+    if image_url:
+        payload["image_url"] = image_url.strip()
+    
+    # Optional callback URL
+    callback_url = os.getenv("KLING_CALLBACK_URL")
+    if callback_url:
+        payload["callback_url"] = callback_url.strip()
+    
+    # Official endpoint: POST /v1/videos/text2video
+    # IMPORTANT: Use the correct endpoint from official documentation
+    create_path = os.getenv("KLING_CREATE_PATH", "").strip()
+    if not create_path:
+        create_path = "/v1/videos/text2video"  # Official endpoint
+    # Remove any old path references
+    if "/v1/jobs/createTask" in create_path:
+        create_path = "/v1/videos/text2video"
+    try:
+        url = f"{_kling_base_url()}{create_path}"
+        resp = requests.post(url, headers=_kling_headers(), json=payload, timeout=90)
+    except requests.exceptions.ConnectionError as e:
+        base_url = _kling_base_url()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Cannot connect to Kling AI provider at '{base_url}'. Please check KLING_BASE_URL in your .env file. Error: {str(e)}",
+        )
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Kling AI request failed: {str(e)}",
+        )
+    
+    if resp.status_code in (401, 403):
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Kling AI unauthorized: {resp.text}",
+        )
+    if resp.status_code == 429:
+        # Rate limit or insufficient balance at provider
+        error_data = resp.json() if resp.content else {}
+        error_msg = error_data.get("message", "Rate limit exceeded or insufficient balance")
+        if "balance" in error_msg.lower() or "not enough" in error_msg.lower() or error_data.get("code") == 1102:
+            # Provide more helpful message about units/balance
+            detail_msg = (
+                f"Kling AI provider balance/units insufficient: {error_msg}. "
+                f"Please check your account balance/units at your Kling AI provider dashboard. "
+                f"Note: Different models consume different amounts of units. "
+                f"V2.0 and V2.1 models typically require more units than V1.0/V1.5. "
+                f"If you recently purchased a package, please verify: "
+                f"(1) Package is active, (2) Units are available, (3) Package hasn't expired. "
+                f"Consider using V1.0 or V1.5 models for testing to save units."
+            )
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=detail_msg,
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Kling AI rate limit exceeded: {error_msg}",
+            )
+    if resp.status_code >= 400:
+        error_data = resp.json() if resp.content else {}
+        error_msg = error_data.get("message", resp.text)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Kling AI provider error ({resp.status_code}): {error_msg}",
+        )
+    
+    return resp.json() if resp.content else {}
+
+
+def _kling_parse_task_id(data: Any) -> Optional[str]:
+    """
+    Parse task ID from Kling AI response.
+    Official format: { "code": 0, "data": { "task_id": "..." } }
+    """
+    if isinstance(data, dict):
+        # Check nested data field (official format)
+        nested = data.get("data")
+        if isinstance(nested, dict):
+            task_id = nested.get("task_id")
+            if isinstance(task_id, str) and task_id.strip():
+                return task_id.strip()
+        
+        # Fallback: try common field names
+        task_id = (
+            data.get("taskId")
+            or data.get("task_id")
+            or data.get("id")
+            or data.get("task")
+        )
+        if isinstance(task_id, str) and task_id.strip():
+            return task_id.strip()
+    return None
+
+
+def _kling_get_status(task_id: str) -> Dict[str, Any]:
+    """
+    Get Kling AI task status.
+    Official endpoint: GET /v1/videos/text2video/{task_id}
+    """
+    # Official endpoint: GET /v1/videos/text2video/{task_id}
+    status_path = os.getenv("KLING_STATUS_PATH", "").strip()
+    if not status_path:
+        status_path = f"/v1/videos/text2video/{task_id}"  # Official endpoint
+    else:
+        # If custom path provided, replace {task_id} placeholder
+        status_path = status_path.replace("{task_id}", task_id).replace("{id}", task_id)
+    # Remove any old path references
+    if "/v1/jobs/taskStatus" in status_path:
+        status_path = f"/v1/videos/text2video/{task_id}"
+    url = f"{_kling_base_url()}{status_path}"
+    
+    resp = requests.get(
+        url,
+        headers=_kling_headers(),
+        timeout=60,
+    )
+    
+    if resp.status_code in (401, 403):
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Kling AI unauthorized: {resp.text}",
+        )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Kling AI provider error ({resp.status_code}): {resp.text}",
+        )
+    
+    return resp.json() if resp.content else {}
+
+
+def _kling_parse_status(data: Any) -> Optional[str]:
+    """
+    Parse status from Kling AI response.
+    Official format: { "code": 0, "data": { "task_status": "submitted|processing|succeed|failed" } }
+    """
+    if isinstance(data, dict):
+        # Check nested data field (official format)
+        nested = data.get("data")
+        if isinstance(nested, dict):
+            status = nested.get("task_status")
+            if isinstance(status, str):
+                status_lower = status.lower()
+                if status_lower == "succeed":
+                    return "succeeded"
+                if status_lower == "failed":
+                    return "failed"
+                if status_lower in ("submitted", "processing"):
+                    return "processing"
+        
+        # Fallback: try common field names
+        status = data.get("status") or data.get("state") or data.get("task_status")
+        if isinstance(status, str):
+            status_lower = status.lower()
+            if status_lower in ("succeed", "completed", "success", "succeeded", "done"):
+                return "succeeded"
+            if status_lower == "failed":
+                return "failed"
+            if status_lower in ("submitted", "processing", "generating", "running", "pending", "queued"):
+                return "processing"
+    return None
+
+
+# ==============================
+# Kling AI Image Generation Helpers
+# ==============================
+
+
+def _kling_create_image_task(
+    prompt: str,
+    model: Optional[str] = None,
+    aspect_ratio: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Create a Kling AI text-to-image task.
+    
+    Official API Documentation:
+    - Endpoint: POST /v1/images/generations
+    - Model names: kling-v1, kling-v1-5, kling-v2, kling-v2-new, kling-v2-1
+    - Field name: model_name (not model)
+    """
+    # Normalize model name
+    model_name = (model or "kling-v1").strip().lower()
+    
+    # Map frontend model names to official API model names for image generation
+    # Official models: kling-v1, kling-v1-5, kling-v2, kling-v2-new, kling-v2-1
+    model_mapping = {
+        # Frontend format -> Official API format
+        "kling-v1": "kling-v1",
+        "kling-v1-5": "kling-v1-5",
+        "kling-v1.5": "kling-v1-5",
+        "kling-v2-1": "kling-v2-1",
+        "kling-v2.1": "kling-v2-1",
+        "kling-v2": "kling-v2",
+        "kling-v2-new": "kling-v2-new",
+        "kling-image-o1": "kling-v1",  # Note: image-o1 not in official list, fallback to v1
+        "kling-o1": "kling-v1",
+    }
+    
+    if model_name in model_mapping:
+        model_name = model_mapping[model_name]
+    elif not model_name.startswith("kling-"):
+        model_name = "kling-v1"
+    
+    # Build payload according to official API documentation
+    # Official field name is "model_name" (not "model")
+    payload: Dict[str, Any] = {
+        "model_name": model_name,
+        "prompt": prompt.strip(),
+    }
+    
+    # Add aspect ratio if provided
+    # Official supported ratios: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3, 21:9
+    if aspect_ratio:
+        valid_ratios = ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3", "21:9"]
+        if aspect_ratio in valid_ratios:
+            payload["aspect_ratio"] = aspect_ratio
+        else:
+            payload["aspect_ratio"] = "16:9"  # Default per documentation
+    else:
+        payload["aspect_ratio"] = "16:9"  # Default per documentation
+    
+    # Try different possible endpoints for image generation
+    # Official endpoint per documentation: POST /v1/images/generations
+    create_path = os.getenv("KLING_IMAGE_CREATE_PATH", "").strip()
+    
+    # List of endpoints to try (in order of likelihood)
+    # Always try official endpoint first, even if custom path is set
+    possible_paths = []
+    if create_path:
+        # If custom path is set, try it first, then official endpoint as fallback
+        possible_paths = [
+            create_path,
+            "/v1/images/generations",  # Official endpoint (always try this)
+        ]
+    else:
+        # Official Kling AI image generation endpoint (from documentation)
+        possible_paths = [
+            "/v1/images/generations",  # Official endpoint (try this first!)
+            "/v1/videos/text2video",   # Fallback: some providers use same endpoint
+            "/v1/images/text2image",   # Alternative endpoint
+        ]
+    
+    resp = None
+    last_error = None
+    working_path = None
+    
+    # Try each endpoint until one works
+    for path_to_try in possible_paths:
+        try:
+            url = f"{_kling_base_url()}{path_to_try}"
+            resp = requests.post(url, headers=_kling_headers(), json=payload, timeout=90)
+            
+            # If successful (2xx), use this response
+            if resp.status_code < 400:
+                working_path = path_to_try
+                break
+            elif resp.status_code == 404:
+                # Try next endpoint if 404
+                last_error = f"Endpoint {path_to_try} returned 404"
+                continue
+            else:
+                # Non-404 error, use this response (will be handled below)
+                working_path = path_to_try
+                break
+        except requests.exceptions.ConnectionError as e:
+            # Connection error - try next endpoint
+            last_error = f"Connection error for {path_to_try}: {str(e)}"
+            continue
+        except requests.exceptions.RequestException as e:
+            # Request error - try next endpoint
+            last_error = f"Request error for {path_to_try}: {str(e)}"
+            continue
+    
+    if not resp:
+        # All endpoints failed
+        base_url = _kling_base_url()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                f"Failed to connect to Kling AI. Tried endpoints: {', '.join(possible_paths)}. "
+                f"Last error: {last_error or 'Unknown error'}. "
+                f"Please check KLING_BASE_URL in your .env file (current: {base_url})."
+            ),
+        )
+    
+    # Use the working path for error messages
+    create_path = working_path or possible_paths[0] if possible_paths else "/v1/images/generations"
+    
+    if resp.status_code in (401, 403):
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Kling AI unauthorized: {resp.text}",
+        )
+    if resp.status_code == 429:
+        error_data = resp.json() if resp.content else {}
+        error_msg = error_data.get("message", "Rate limit exceeded or insufficient balance")
+        if "balance" in error_msg.lower() or "not enough" in error_msg.lower() or error_data.get("code") == 1102:
+            detail_msg = (
+                f"Kling AI provider balance/units insufficient: {error_msg}. "
+                f"Please check your account balance/units at your Kling AI provider dashboard."
+            )
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=detail_msg,
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Kling AI rate limit exceeded: {error_msg}",
+            )
+    if resp.status_code == 400:
+        error_data = resp.json() if resp.content else {}
+        error_msg = error_data.get("message") or error_data.get("error") or resp.text or "Bad request"
+        
+        # If "model is not supported", try using "model" field instead of "model_name"
+        if "model" in error_msg.lower() and "not supported" in error_msg.lower():
+            # Retry with "model" field instead of "model_name"
+            payload_retry = payload.copy()
+            if "model_name" in payload_retry:
+                payload_retry["model"] = payload_retry.pop("model_name")
+            
+            try:
+                resp_retry = requests.post(url, headers=_kling_headers(), json=payload_retry, timeout=90)
+                if resp_retry.status_code < 400:
+                    return resp_retry.json() if resp_retry.content else {}
+                # If still error, continue with original error
+            except:
+                pass
+        
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Kling AI bad request (400): {error_msg}. "
+                f"Model used: {model_name}. "
+                f"Please check if the model supports image generation. "
+                f"Supported image models: kling-v1, kling-v1-5, kling-v2-1, kling-v2, kling-image-o1"
+            ),
+        )
+    if resp.status_code == 404:
+        error_data = resp.json() if resp.content else {}
+        error_msg = error_data.get("message") or error_data.get("error") or resp.text or "Endpoint not found"
+        tried_paths_str = ', '.join(possible_paths) if possible_paths else (create_path if create_path else "/v1/images/generations")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Kling AI image generation endpoint not found (404): {error_msg}. "
+                f"Tried endpoints: {tried_paths_str}. "
+                f"Official endpoint is /v1/images/generations. "
+                f"Please set KLING_IMAGE_CREATE_PATH=/v1/images/generations in your .env file. "
+                f"If that doesn't work, contact your Kling AI provider for the correct endpoint."
+            ),
+        )
+    if resp.status_code >= 400:
+        error_data = resp.json() if resp.content else {}
+        error_msg = error_data.get("message") or error_data.get("error") or resp.text or "Unknown error"
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Kling AI provider error ({resp.status_code}): {error_msg}",
+        )
+    
+    return resp.json() if resp.content else {}
+
+
+def _kling_create_image_to_image_task(
+    prompt: str,
+    image_url: str,
+    model: Optional[str] = None,
+    mode: Optional[str] = None,
+    aspect_ratio: Optional[str] = None,
+    image_url2: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Create a Kling AI image-to-image task.
+    
+    Modes:
+    - entire-image: Transform entire image (kling-v1)
+    - subject: Focus on subject (kling-v1-5)
+    - face: Transform faces (kling-v1-5)
+    - restyle: Apply new style (kling-v2, kling-v2-new)
+    - multi-image: Combine multiple images (kling-v2)
+    """
+    # Normalize model name
+    model_name = (model or "kling-v1").strip().lower()
+    mode_name = (mode or "entire-image").strip().lower()
+    
+    # Map frontend model names
+    model_mapping = {
+        "kling-v1": "kling-v1",
+        "kling-v1-5": "kling-v1-5",
+        "kling-v1.5": "kling-v1-5",
+        "kling-v2": "kling-v2",
+        "kling-v2-new": "kling-v2-new",
+    }
+    
+    if model_name in model_mapping:
+        model_name = model_mapping[model_name]
+    elif not model_name.startswith("kling-"):
+        model_name = "kling-v1"
+    
+    # Build payload according to official API documentation
+    # For image-to-image, use "image" field (not "image_url")
+    # image_reference: "subject" or "face" (for kling-v1-5)
+    payload: Dict[str, Any] = {
+        "model_name": model_name,
+        "prompt": prompt.strip(),
+        "image": image_url.strip(),  # Official field name is "image" (not "image_url")
+    }
+    
+    # Add second image for multi-image mode
+    if mode_name == "multi-image" and image_url2:
+        payload["image2"] = image_url2.strip()
+    
+    # Add image_reference for kling-v1-5 models
+    if model_name == "kling-v1-5" and mode_name in ["subject", "face"]:
+        payload["image_reference"] = mode_name
+    
+    # Add aspect ratio if provided and mode supports it
+    # Official supported ratios: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3, 21:9
+    if aspect_ratio and mode_name not in ["restyle"]:
+        valid_ratios = ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3", "21:9"]
+        if aspect_ratio in valid_ratios:
+            payload["aspect_ratio"] = aspect_ratio
+    
+    # Official endpoint: POST /v1/images/generations (same as text-to-image, but with image parameter)
+    create_path = os.getenv("KLING_IMAGE_TO_IMAGE_CREATE_PATH", "/v1/images/generations").strip()
+    try:
+        url = f"{_kling_base_url()}{create_path}"
+        resp = requests.post(url, headers=_kling_headers(), json=payload, timeout=90)
+    except requests.exceptions.ConnectionError as e:
+        base_url = _kling_base_url()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Cannot connect to Kling AI provider at '{base_url}'. Error: {str(e)}",
+        )
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Kling AI request failed: {str(e)}",
+        )
+    
+    if resp.status_code in (401, 403):
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Kling AI unauthorized: {resp.text}",
+        )
+    if resp.status_code == 429:
+        error_data = resp.json() if resp.content else {}
+        error_msg = error_data.get("message", "Rate limit exceeded or insufficient balance")
+        if "balance" in error_msg.lower() or "not enough" in error_msg.lower() or error_data.get("code") == 1102:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=f"Kling AI provider balance/units insufficient: {error_msg}",
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Kling AI rate limit exceeded: {error_msg}",
+            )
+    if resp.status_code >= 400:
+        error_data = resp.json() if resp.content else {}
+        error_msg = error_data.get("message", resp.text)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Kling AI provider error ({resp.status_code}): {error_msg}",
+        )
+    
+    return resp.json() if resp.content else {}
+
+
+def _kling_get_image_status(task_id: str) -> Dict[str, Any]:
+    """
+    Get Kling AI image task status.
+    Official endpoint: GET /v1/images/generations/{task_id}
+    """
+    status_path = os.getenv("KLING_IMAGE_STATUS_PATH", "").strip()
+    if not status_path:
+        status_path = f"/v1/images/generations/{task_id}"  # Official endpoint
+    else:
+        status_path = status_path.replace("{task_id}", task_id).replace("{id}", task_id)
+    url = f"{_kling_base_url()}{status_path}"
+    
+    resp = requests.get(
+        url,
+        headers=_kling_headers(),
+        timeout=60,
+    )
+    
+    if resp.status_code in (401, 403):
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Kling AI unauthorized: {resp.text}",
+        )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Kling AI provider error ({resp.status_code}): {resp.text}",
+        )
+    
+    return resp.json() if resp.content else {}
+
+
+def _kling_parse_image_url(data: Any) -> Optional[str]:
+    """
+    Parse image URL from Kling AI response.
+    Official format: { "code": 0, "data": { "task_result": { "images": [{ "url": "..." }] } } }
+    """
+    if isinstance(data, dict):
+        # Check nested data field (official format)
+        nested = data.get("data")
+        if isinstance(nested, dict):
+            task_result = nested.get("task_result")
+            if isinstance(task_result, dict):
+                images = task_result.get("images")
+                if isinstance(images, list) and len(images) > 0:
+                    first_image = images[0]
+                    if isinstance(first_image, dict):
+                        url = first_image.get("url")
+                        if isinstance(url, str) and url.strip():
+                            return url.strip()
+            
+            # Fallback: try direct fields
+            image_url = nested.get("image_url") or nested.get("imageUrl") or nested.get("url")
+            if isinstance(image_url, str) and image_url.strip():
+                return image_url.strip()
+        
+        # Fallback: try root level
+        image_url = data.get("image_url") or data.get("imageUrl") or data.get("url") or data.get("result_url")
+        if isinstance(image_url, str) and image_url.strip():
+            return image_url.strip()
+    return None
+
+
+def _kling_parse_video_url(data: Any) -> Optional[str]:
+    """
+    Parse video URL from Kling AI response.
+    Official format: { "code": 0, "data": { "task_result": { "videos": [{ "url": "..." }] } } }
+    """
+    if isinstance(data, dict):
+        # Check nested data field (official format)
+        nested = data.get("data")
+        if isinstance(nested, dict):
+            task_result = nested.get("task_result")
+            if isinstance(task_result, dict):
+                videos = task_result.get("videos")
+                if isinstance(videos, list) and len(videos) > 0:
+                    first_video = videos[0]
+                    if isinstance(first_video, dict):
+                        url = first_video.get("url")
+                        if isinstance(url, str) and url.strip():
+                            return url.strip()
+            
+            # Fallback: try direct fields
+            url = nested.get("videoUrl") or nested.get("video_url") or nested.get("url")
+            if isinstance(url, str) and url.strip():
+                return url.strip()
+        
+        # Fallback: try root level
+        url = data.get("videoUrl") or data.get("video_url") or data.get("url")
+        if isinstance(url, str) and url.strip():
+            return url.strip()
+    return None
+
+
+# ==============================
 # FastAPI app & middleware
 # ==============================
 
 app = FastAPI(title="Web3 Auth API")
 
+# CORS configuration - MUST be added before routes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -811,16 +1936,24 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3001",
+        # Add any other frontend URLs you need
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 
 @app.get("/")
 def read_root():
     return {"message": "Web3 Auth API is running"}
+
+# Add OPTIONS handler for CORS preflight requests
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    return {"message": "OK"}
 
 
 # ==============================
@@ -1037,8 +2170,15 @@ def get_coin_balance(current_user: User = Depends(get_current_user), db: Session
 @app.post("/coins/topup/claim", response_model=ClaimTopUpResponse)
 def claim_topup(body: ClaimTopUpRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     tx_hash = (body.tx_hash or "").strip()
+    # Require a canonical 32-byte transaction hash (0x + 64 hex chars)
     if not tx_hash or not tx_hash.startswith("0x"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="tx_hash is required")
+    if len(tx_hash) != 66:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tx_hash format")
+    try:
+        int(tx_hash[2:], 16)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tx_hash format")
 
     # Prevent double-claim globally
     existing = db.query(CoinTopUpTx).filter(CoinTopUpTx.tx_hash == tx_hash).first()
@@ -1104,7 +2244,20 @@ def create_text_to_video_job(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt is required")
 
     # Spend coins for generation
-    cost_coins = _model_cost_coins(body.model)
+    # For sora2: map quality -> coins bucket (hd=180, standard=25). Otherwise use model-based bucket.
+    provider_check = (body.provider or _provider_name()).strip().lower()
+    if provider_check == "sora2":
+        q = (body.quality or "standard").strip().lower()
+        cost_coins = 180 if q == "hd" else 25
+    elif provider_check == "kling":
+        # Kling AI pricing: premium models (v2-1, v2-0) = 180 coins, standard (v1-5, v1-0) = 25 coins
+        model = (body.model or "").strip().lower()
+        if model and ("v2" in model or "2.1" in model or "2.0" in model):
+            cost_coins = 180
+        else:
+            cost_coins = 25
+    else:
+        cost_coins = _model_cost_coins(body.model)
     bal = _get_or_create_coin_balance(db, current_user.id)
     if int(bal.coins or 0) < int(cost_coins):
         raise HTTPException(status_code=402, detail=f"Insufficient coins. Need {cost_coins} coins.")
@@ -1113,7 +2266,7 @@ def create_text_to_video_job(
     db.commit()
     db.refresh(bal)
 
-    provider = _provider_name()
+    provider = (body.provider or _provider_name()).strip().lower()
     job_id = str(uuid4())
     created_at = datetime.utcnow()
 
@@ -1126,57 +2279,151 @@ def create_text_to_video_job(
         "error": None,
         "created_at": created_at,
         "user_id": current_user.id,
+        "coins_spent": int(cost_coins),
+        "coins_refunded": False,
     }
 
-    if provider == "mock":
-        # Instant success (useful for UI wiring without any API keys)
-        job["status"] = "succeeded"
-        job["video_url"] = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
-
-    elif provider == "replicate":
-        pred = _replicate_create_prediction(body.prompt.strip(), int(body.duration_seconds or 5))
-        job["status"] = pred.get("status") or "processing"
-        job["provider_prediction_id"] = pred.get("id")
-        # Some models may return output immediately
-        output = pred.get("output")
-        if isinstance(output, str):
-            job["video_url"] = output
-        elif isinstance(output, list) and output:
-            job["video_url"] = output[0] if isinstance(output[0], str) else None
-        if job["video_url"] and job["status"] == "succeeded":
+    try:
+        if provider == "mock":
+            # Instant success (useful for UI wiring without any API keys)
             job["status"] = "succeeded"
-        elif job["status"] in ("starting", "processing", "queued"):
+            job["video_url"] = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+
+        elif provider == "replicate":
+            pred = _replicate_create_prediction(body.prompt.strip(), int(body.duration_seconds or 5))
+            job["status"] = pred.get("status") or "processing"
+            job["provider_prediction_id"] = pred.get("id")
+            # Some models may return output immediately
+            output = pred.get("output")
+            if isinstance(output, str):
+                job["video_url"] = output
+            elif isinstance(output, list) and output:
+                job["video_url"] = output[0] if isinstance(output[0], str) else None
+            if job["video_url"] and job["status"] == "succeeded":
+                job["status"] = "succeeded"
+            elif job["status"] in ("starting", "processing", "queued"):
+                job["status"] = "processing"
+
+        elif provider == "veo3":
+            task = _veo3_create_task(
+                body.prompt.strip(),
+                model=(body.model or "veo3-fast"),
+                aspect_ratio=body.aspect_ratio,
+                watermark=body.watermark,
+            )
+            # Veo 3.1 docs: { code, message, data: { task_id } }
+            data = task.get("data") if isinstance(task, dict) else None
+            task_id = None
+            if isinstance(data, dict):
+                task_id = data.get("task_id")
+            # Fallbacks for other shapes
+            if not task_id and isinstance(task, dict):
+                task_id = task.get("taskId") or task.get("task_id") or task.get("id")
+            if not task_id:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Veo3 provider response missing task id: {task}",
+                )
+            job["provider_task_id"] = str(task_id)
+            # Generate is async -> processing
             job["status"] = "processing"
 
-    elif provider == "veo3":
-        task = _veo3_create_task(
-            body.prompt.strip(),
-            model=(body.model or "veo3-fast"),
-            aspect_ratio=body.aspect_ratio,
-            watermark=body.watermark,
-        )
-        # Veo 3.1 docs: { code, message, data: { task_id } }
-        data = task.get("data") if isinstance(task, dict) else None
-        task_id = None
-        if isinstance(data, dict):
-            task_id = data.get("task_id")
-        # Fallbacks for other shapes
-        if not task_id and isinstance(task, dict):
-            task_id = task.get("taskId") or task.get("task_id") or task.get("id")
-        if not task_id:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Veo3 provider response missing task id: {task}",
+        elif provider == "sora2":
+            aspect_ratio = (body.aspect_ratio or "landscape").strip().lower()
+            if aspect_ratio not in ("landscape", "portrait"):
+                aspect_ratio = "landscape"
+            quality = (body.quality or "standard").strip().lower()
+            if quality not in ("standard", "hd"):
+                quality = "standard"
+            image_urls = body.image_urls if isinstance(body.image_urls, list) and body.image_urls else None
+            callback_url = (body.callback_url or "").strip() or None
+            task = _sora2_create_task(
+                body.prompt.strip(),
+                aspect_ratio=aspect_ratio,
+                quality=quality,
+                image_urls=image_urls,
+                watermark=(body.watermark or "").strip() or None,
+                callback_url=callback_url,
+                duration_seconds=int(body.duration_seconds or 4),
             )
-        job["provider_task_id"] = str(task_id)
-        # Generate is async -> processing
-        job["status"] = "processing"
+            task_id = _sora2_parse_id(task)
+            if not task_id:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Sora2 provider response missing id: {task}",
+                )
+            job["provider_task_id"] = str(task_id)
+            job["status"] = "processing"
 
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unsupported VIDEO_PROVIDER '{provider}'. Use 'mock', 'replicate', or 'veo3'.",
-        )
+        elif provider == "kling":
+            # Kling AI supports text-to-video and image-to-video
+            image_url = None
+            if body.image_urls and isinstance(body.image_urls, list) and len(body.image_urls) > 0:
+                image_url = body.image_urls[0]  # Use first image for image-to-video
+            
+            duration = int(body.duration_seconds or 5)
+            # Validate duration (must be 5 or 10)
+            if duration not in [5, 10]:
+                duration = 5
+            
+            # Map aspect ratio if provided
+            aspect_ratio = None
+            if body.aspect_ratio:
+                ar = body.aspect_ratio.strip().lower()
+                if ar in ["16:9", "9:16", "1:1"]:
+                    aspect_ratio = ar
+                elif ar == "16:9" or ar == "landscape":
+                    aspect_ratio = "16:9"
+                elif ar == "9:16" or ar == "portrait":
+                    aspect_ratio = "9:16"
+            
+            try:
+                task = _kling_create_task(
+                    prompt=body.prompt.strip(),
+                    model=body.model,  # e.g., "v2-1-master", "v1-6", etc.
+                    image_url=image_url,
+                    duration=duration,
+                    aspect_ratio=aspect_ratio,
+                )
+            except HTTPException:
+                # Re-raise HTTP exceptions (they already have proper error messages)
+                raise
+            except Exception as e:
+                # Catch any other errors and provide helpful message
+                error_msg = str(e)
+                if "your-kling-provider" in error_msg.lower() or "getaddrinfo failed" in error_msg.lower() or "NameResolutionError" in error_msg:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Kling AI configuration error: KLING_BASE_URL is not set correctly in your .env file. Please update it with the correct base URL from your Kling AI provider (e.g., https://api.useapi.net). Current error: {error_msg}",
+                    )
+                raise
+            
+            # Check for API errors in response
+            if isinstance(task, dict) and task.get("code") != 0:
+                error_msg = task.get("message") or "Kling AI API error"
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Kling AI API error: {error_msg}",
+                )
+            
+            task_id = _kling_parse_task_id(task)
+            if not task_id:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Kling AI provider response missing task id: {task}",
+                )
+            job["provider_task_id"] = str(task_id)
+            job["status"] = "processing"
+
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Unsupported VIDEO_PROVIDER '{provider}'. Use 'mock', 'replicate', 'veo3', 'sora2', or 'kling'.",
+            )
+    except Exception:
+        # Provider failed before job was persisted -> refund spent coins.
+        _refund_generation_coins(db, current_user.id, int(cost_coins))
+        raise
 
     VIDEO_JOBS[job_id] = job
     return VideoJobOut(
@@ -1195,6 +2442,7 @@ def create_text_to_video_job(
 def get_video_job(
     job_id: str,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     job = VIDEO_JOBS.get(job_id)
     if not job:
@@ -1203,6 +2451,17 @@ def get_video_job(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     provider = job.get("provider")
+    # Best-effort refund helper (only once per job)
+    def _maybe_refund(reason: Optional[str] = None) -> None:
+        if job.get("coins_refunded"):
+            return
+        coins_spent = int(job.get("coins_spent") or 0)
+        if coins_spent <= 0:
+            return
+        _refund_generation_coins(db, current_user.id, coins_spent)
+        job["coins_refunded"] = True
+        if reason:
+            job["error"] = f"{reason} (coins refunded)"
     if provider == "replicate" and job.get("status") in ("queued", "processing"):
         pred_id = job.get("provider_prediction_id")
         if pred_id:
@@ -1220,6 +2479,7 @@ def get_video_job(
             elif status_raw == "failed":
                 job["status"] = "failed"
                 job["error"] = (pred.get("error") or "Provider failed").strip() if pred.get("error") else "Provider failed"
+                _maybe_refund(job.get("error"))
 
             VIDEO_JOBS[job_id] = job
 
@@ -1241,6 +2501,7 @@ def get_video_job(
             elif status_norm in ("FAILED", "ERROR"):
                 job["status"] = "failed"
                 job["error"] = (st.get("message") or "Provider failed") if isinstance(st, dict) else "Provider failed"
+                _maybe_refund(job.get("error"))
             elif status_norm in ("COMPLETED", "SUCCEEDED", "SUCCESS", "DONE"):
                 # The generated video URL is in data.response[]
                 video_url = None
@@ -1258,6 +2519,89 @@ def get_video_job(
                 job["status"] = "succeeded" if video_url else "failed"
                 if not video_url:
                     job["error"] = "Veo3 completed but no video URL returned"
+                    _maybe_refund(job.get("error"))
+            else:
+                job["status"] = "processing"
+
+            VIDEO_JOBS[job_id] = job
+
+    if provider == "sora2" and job.get("status") in ("queued", "processing"):
+        task_id = job.get("provider_task_id")
+        if task_id:
+            st = _sora2_get_status(str(task_id))
+            status_raw = _sora2_parse_status(st) or "processing"
+            status_norm = str(status_raw).lower()
+
+            if status_norm in ("queued", "pending", "starting", "processing", "running", "in_progress"):
+                job["status"] = "processing"
+            elif status_norm in ("failed", "error", "canceled", "cancelled"):
+                job["status"] = "failed"
+                if isinstance(st, dict):
+                    error_obj = st.get("error")
+                    if isinstance(error_obj, dict):
+                        job["error"] = error_obj.get("message", "OpenAI Sora 2 failed")
+                    else:
+                        job["error"] = st.get("error") or "OpenAI Sora 2 failed"
+                else:
+                    job["error"] = "OpenAI Sora 2 failed"
+                _maybe_refund(job.get("error"))
+            elif status_norm in ("completed", "succeeded", "success", "done"):
+                # OpenAI doesn't return video URL in status, need to download from /content endpoint
+                # Use our proxy endpoint to download and serve the video
+                # Get backend base URL from env or use default
+                backend_url = os.getenv("BACKEND_URL") or "http://localhost:8001"
+                backend_url = backend_url.strip().rstrip("/")
+                job["video_url"] = f"{backend_url}/video/sora2/{task_id}/download"
+                job["status"] = "succeeded"
+            else:
+                job["status"] = "processing"
+
+            VIDEO_JOBS[job_id] = job
+
+    if provider == "kling" and job.get("status") in ("queued", "processing"):
+        task_id = job.get("provider_task_id")
+        if task_id:
+            st = _kling_get_status(str(task_id))
+            
+            # Check for API errors
+            if isinstance(st, dict) and st.get("code") != 0:
+                error_msg = st.get("message") or "Kling AI API error"
+                job["status"] = "failed"
+                job["error"] = error_msg
+                _maybe_refund(job.get("error"))
+                VIDEO_JOBS[job_id] = job
+                return VideoJobOut(
+                    job_id=job_id,
+                    status=job["status"],
+                    provider=job["provider"],
+                    video_url=job.get("video_url"),
+                    error=job.get("error"),
+                    created_at=job["created_at"],
+                )
+            
+            status_raw = _kling_parse_status(st) or "processing"
+            status_norm = str(status_raw).lower()
+
+            if status_norm in ("queued", "pending", "starting", "processing", "generating", "running", "submitted"):
+                job["status"] = "processing"
+            elif status_norm in ("failed", "error", "failure", "canceled", "cancelled"):
+                job["status"] = "failed"
+                if isinstance(st, dict):
+                    nested = st.get("data")
+                    if isinstance(nested, dict):
+                        job["error"] = nested.get("task_status_msg") or nested.get("message") or "Kling AI provider failed"
+                    else:
+                        job["error"] = st.get("message") or "Kling AI provider failed"
+                else:
+                    job["error"] = "Kling AI provider failed"
+                _maybe_refund(job.get("error"))
+            elif status_norm in ("completed", "succeeded", "success", "done", "succeed"):
+                video_url = _kling_parse_video_url(st)
+                job["video_url"] = video_url
+                job["status"] = "succeeded" if video_url else "failed"
+                if not video_url:
+                    job["error"] = "Kling AI completed but no video URL returned"
+                    _maybe_refund(job.get("error"))
             else:
                 job["status"] = "processing"
 
@@ -1270,4 +2614,369 @@ def get_video_job(
         video_url=job.get("video_url"),
         error=job.get("error"),
         created_at=job["created_at"],
+    )
+
+
+@app.get("/video/sora2/{video_id}/download")
+def download_sora2_video(
+    video_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Proxy endpoint to download OpenAI Sora 2 video content.
+    This endpoint downloads the video from OpenAI and streams it to the client.
+    """
+    # Verify the video belongs to the user
+    job = None
+    for j in VIDEO_JOBS.values():
+        if j.get("provider_task_id") == video_id and j.get("user_id") == current_user.id:
+            job = j
+            break
+    
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found or access denied")
+    
+    # Download video from OpenAI
+    url = f"{_sora2_base_url()}/v1/videos/{video_id}/content"
+    headers = _sora2_headers()
+    
+    # Add request ID for debugging
+    request_id = str(uuid4())
+    headers["X-Client-Request-Id"] = request_id
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=120, stream=True)
+        if resp.status_code in (401, 403):
+            request_id = resp.headers.get("x-request-id", "unknown")
+            raise HTTPException(
+                status_code=resp.status_code, 
+                detail=f"OpenAI Sora 2 unauthorized: {resp.text} (Request ID: {request_id})"
+            )
+        if resp.status_code >= 400:
+            error_data = resp.json() if resp.content else {}
+            error_msg = error_data.get("error", {}).get("message", resp.text) if isinstance(error_data.get("error"), dict) else resp.text
+            request_id = resp.headers.get("x-request-id", "unknown")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, 
+                detail=f"OpenAI Sora 2 error ({resp.status_code}): {error_msg} (Request ID: {request_id})"
+            )
+        
+        # Stream the video content to the client
+        return StreamingResponse(
+            resp.iter_content(chunk_size=8192),
+            media_type="video/mp4",
+            headers={
+                "Content-Disposition": f'attachment; filename="sora2-video-{video_id}.mp4"',
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to download video from OpenAI: {str(e)}"
+        )
+
+
+# ==============================
+# Image generation endpoints
+# ==============================
+
+
+@app.post("/image/text-to-image", response_model=ImageJobOut)
+def create_text_to_image_job(
+    body: TextToImageRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not body.prompt or not body.prompt.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt is required")
+
+    # Spend coins for generation based on model
+    cost_coins = _image_model_cost_coins(body.model)
+    bal = _get_or_create_coin_balance(db, current_user.id)
+    if int(bal.coins or 0) < int(cost_coins):
+        raise HTTPException(status_code=402, detail=f"Insufficient coins. Need {cost_coins} coins.")
+    bal.coins = int(bal.coins or 0) - int(cost_coins)
+    db.add(bal)
+    db.commit()
+    db.refresh(bal)
+
+    provider = "kling"
+    job_id = str(uuid4())
+    created_at = datetime.utcnow()
+
+    job: Dict[str, Any] = {
+        "job_id": job_id,
+        "user_id": current_user.id,
+        "provider": provider,
+        "status": "queued",
+        "created_at": created_at,
+        "coins_spent": cost_coins,
+        "coins_balance": int(bal.coins or 0),
+        "prompt": body.prompt.strip(),
+        "model": body.model or "kling-v1",
+        "aspect_ratio": body.aspect_ratio or "1:1",
+    }
+
+    # Create task with Kling AI
+    try:
+        task_data = _kling_create_image_task(
+            prompt=body.prompt.strip(),
+            model=body.model or "kling-v1",
+            aspect_ratio=body.aspect_ratio or "1:1",
+        )
+        provider_task_id = _kling_parse_task_id(task_data)
+        if provider_task_id:
+            job["provider_task_id"] = provider_task_id
+            job["status"] = "processing"
+        else:
+            job["status"] = "failed"
+            job["error"] = "Failed to get task ID from Kling AI"
+            # Refund coins
+            bal.coins = int(bal.coins or 0) + int(cost_coins)
+            db.add(bal)
+            db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        job["status"] = "failed"
+        job["error"] = str(e)
+        # Refund coins
+        bal.coins = int(bal.coins or 0) + int(cost_coins)
+        db.add(bal)
+        db.commit()
+
+    IMAGE_JOBS[job_id] = job
+
+    return ImageJobOut(
+        job_id=job_id,
+        status=job["status"],
+        provider=job["provider"],
+        image_url=job.get("image_url"),
+        error=job.get("error"),
+        created_at=job["created_at"],
+        coins_spent=job.get("coins_spent"),
+        coins_balance=job.get("coins_balance"),
+    )
+
+
+@app.post("/image/image-to-image", response_model=ImageJobOut)
+def create_image_to_image_job(
+    body: ImageToImageRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not body.prompt or not body.prompt.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt is required")
+    if not body.image_url or not body.image_url.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image URL is required")
+
+    # Spend coins for generation (5 coins as per user requirement)
+    cost_coins = 5
+    bal = _get_or_create_coin_balance(db, current_user.id)
+    if int(bal.coins or 0) < int(cost_coins):
+        raise HTTPException(status_code=402, detail=f"Insufficient coins. Need {cost_coins} coins.")
+    bal.coins = int(bal.coins or 0) - int(cost_coins)
+    db.add(bal)
+    db.commit()
+    db.refresh(bal)
+
+    provider = "kling"
+    job_id = str(uuid4())
+    created_at = datetime.utcnow()
+
+    job: Dict[str, Any] = {
+        "job_id": job_id,
+        "user_id": current_user.id,
+        "provider": provider,
+        "status": "queued",
+        "created_at": created_at,
+        "coins_spent": cost_coins,
+        "coins_balance": int(bal.coins or 0),
+        "prompt": body.prompt.strip(),
+        "image_url": body.image_url.strip(),
+        "model": body.model or "kling-v1",
+        "mode": body.mode or "entire-image",
+        "aspect_ratio": body.aspect_ratio,
+    }
+
+    # Create task with Kling AI
+    try:
+        task_data = _kling_create_image_to_image_task(
+            prompt=body.prompt.strip(),
+            image_url=body.image_url.strip(),
+            model=body.model or "kling-v1",
+            mode=body.mode or "entire-image",
+            aspect_ratio=body.aspect_ratio,
+            image_url2=body.image_url2.strip() if body.image_url2 else None,
+        )
+        provider_task_id = _kling_parse_task_id(task_data)
+        if provider_task_id:
+            job["provider_task_id"] = provider_task_id
+            job["status"] = "processing"
+        else:
+            job["status"] = "failed"
+            job["error"] = "Failed to get task ID from Kling AI"
+            # Refund coins
+            bal.coins = int(bal.coins or 0) + int(cost_coins)
+            db.add(bal)
+            db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        job["status"] = "failed"
+        job["error"] = str(e)
+        # Refund coins
+        bal.coins = int(bal.coins or 0) + int(cost_coins)
+        db.add(bal)
+        db.commit()
+
+    IMAGE_JOBS[job_id] = job
+
+    return ImageJobOut(
+        job_id=job_id,
+        status=job["status"],
+        provider=job["provider"],
+        image_url=job.get("image_url"),
+        error=job.get("error"),
+        created_at=job["created_at"],
+        coins_spent=job.get("coins_spent"),
+        coins_balance=job.get("coins_balance"),
+    )
+
+
+@app.get("/image/job/{job_id}", response_model=ImageJobOut)
+def get_image_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = IMAGE_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image job not found")
+    
+    if job.get("user_id") != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    provider = job.get("provider", "kling")
+    
+    # Poll job status if still processing
+    if provider == "kling" and job.get("status") in ("queued", "processing"):
+        task_id = job.get("provider_task_id")
+        if task_id:
+            try:
+                st = _kling_get_image_status(str(task_id))
+                
+                # Check for API errors
+                if isinstance(st, dict) and st.get("code") != 0:
+                    error_msg = st.get("message") or "Kling AI API error"
+                    job["status"] = "failed"
+                    job["error"] = error_msg
+                    # Refund coins
+                    bal = _get_or_create_coin_balance(db, current_user.id)
+                    bal.coins = int(bal.coins or 0) + int(job.get("coins_spent", 0))
+                    db.add(bal)
+                    db.commit()
+                    IMAGE_JOBS[job_id] = job
+                    return ImageJobOut(
+                        job_id=job_id,
+                        status=job["status"],
+                        provider=job["provider"],
+                        image_url=job.get("image_url"),
+                        error=job.get("error"),
+                        created_at=job["created_at"],
+                        coins_spent=job.get("coins_spent"),
+                        coins_balance=job.get("coins_balance"),
+                    )
+                
+                # Parse status from response
+                # Official format: data.task_status = "submitted|processing|succeed|failed"
+                # Also check task_result.images - if images exist, image is ready regardless of task_status
+                status_raw = None
+                image_url_from_response = None
+                
+                if isinstance(st, dict):
+                    nested = st.get("data")
+                    if isinstance(nested, dict):
+                        # Check if image is ready first (task_result.images)
+                        task_result = nested.get("task_result")
+                        if isinstance(task_result, dict):
+                            images = task_result.get("images")
+                            if isinstance(images, list) and len(images) > 0:
+                                first_image = images[0]
+                                if isinstance(first_image, dict):
+                                    url = first_image.get("url")
+                                    if isinstance(url, str) and url.strip():
+                                        image_url_from_response = url.strip()
+                                        # Image is ready, treat as succeed
+                                        status_raw = "succeed"
+                        
+                        # If image not found yet, check task_status
+                        if not status_raw:
+                            status_raw = nested.get("task_status")
+                
+                status_raw = status_raw or _kling_parse_status(st) or "processing"
+                status_norm = str(status_raw).lower()
+
+                if status_norm in ("queued", "pending", "starting", "processing", "generating", "running", "submitted"):
+                    job["status"] = "processing"
+                elif status_norm in ("failed", "error", "failure", "canceled", "cancelled"):
+                    job["status"] = "failed"
+                    if isinstance(st, dict):
+                        nested = st.get("data")
+                        if isinstance(nested, dict):
+                            job["error"] = nested.get("task_status_msg") or nested.get("message") or "Kling AI provider failed"
+                        else:
+                            job["error"] = st.get("message") or "Kling AI provider failed"
+                    else:
+                        job["error"] = "Kling AI provider failed"
+                    # Refund coins
+                    bal = _get_or_create_coin_balance(db, current_user.id)
+                    bal.coins = int(bal.coins or 0) + int(job.get("coins_spent", 0))
+                    db.add(bal)
+                    db.commit()
+                elif status_norm in ("completed", "succeeded", "success", "done", "succeed") or image_url_from_response:
+                    # Status is "succeed" per documentation, or image URL found
+                    image_url = image_url_from_response or _kling_parse_image_url(st)
+                    if image_url:
+                        job["image_url"] = image_url
+                        job["status"] = "succeeded"
+                    else:
+                        # Try to get more info for debugging
+                        debug_info = ""
+                        if isinstance(st, dict):
+                            nested = st.get("data")
+                            if isinstance(nested, dict):
+                                task_result = nested.get("task_result")
+                                debug_info = f" task_result exists: {task_result is not None}"
+                                if task_result:
+                                    images = task_result.get("images")
+                                    debug_info += f", images exists: {images is not None}, images count: {len(images) if isinstance(images, list) else 0}"
+                        
+                        job["status"] = "failed"
+                        job["error"] = f"Kling AI completed but no image URL returned.{debug_info} Response: {str(st)[:200]}"
+                        # Refund coins
+                        bal = _get_or_create_coin_balance(db, current_user.id)
+                        bal.coins = int(bal.coins or 0) + int(job.get("coins_spent", 0))
+                        db.add(bal)
+                        db.commit()
+                else:
+                    job["status"] = "processing"
+
+                IMAGE_JOBS[job_id] = job
+            except Exception as e:
+                # Don't fail the request if polling fails, just return current status
+                pass
+
+    return ImageJobOut(
+        job_id=job_id,
+        status=job["status"],
+        provider=job["provider"],
+        image_url=job.get("image_url"),
+        error=job.get("error"),
+        created_at=job["created_at"],
+        coins_spent=job.get("coins_spent"),
+        coins_balance=job.get("coins_balance"),
     )

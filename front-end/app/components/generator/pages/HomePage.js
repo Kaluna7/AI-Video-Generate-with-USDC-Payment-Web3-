@@ -1,9 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-export default function HomePage({ onNavigateToText, onNavigateToImage }) {
+export default function HomePage({ onNavigateToText, onNavigateToImage, onNavigateToTextImage, onNavigateToImageImage }) {
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
   const exampleVideos = [
     {
       id: 1,
@@ -69,31 +73,68 @@ export default function HomePage({ onNavigateToText, onNavigateToImage }) {
         </p>
 
         {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
-          <button
-            onClick={onNavigateToText}
-            className="group w-full sm:w-auto px-8 py-4 gradient-purple-blue text-white rounded-xl font-semibold text-lg hover:opacity-90 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-purple-500/20 flex items-center justify-center gap-3"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-            </svg>
-            <span>Text to Video</span>
-            <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-          <button
-            onClick={onNavigateToImage}
-            className="group w-full sm:w-auto px-8 py-4 bg-gray-800 border-2 border-gray-700 text-white rounded-xl font-semibold text-lg hover:border-purple-500 hover:bg-gray-700 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span>Image to Video</span>
-            <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
+        <div className="space-y-4 mb-12">
+          {/* Video Generation */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-400 mb-3 text-center">Video Generation</h3>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={onNavigateToText}
+                className="group w-full sm:w-auto px-8 py-4 gradient-purple-blue text-white rounded-xl font-semibold text-lg hover:opacity-90 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-purple-500/20 flex items-center justify-center gap-3"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+                <span>Text to Video</span>
+                <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              <button
+                onClick={onNavigateToImage}
+                className="group w-full sm:w-auto px-8 py-4 bg-gray-800 border-2 border-gray-700 text-white rounded-xl font-semibold text-lg hover:border-purple-500 hover:bg-gray-700 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span>Image to Video</span>
+                <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Image Generation */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-400 mb-3 text-center">Image Generation</h3>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={onNavigateToTextImage}
+                className="group w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-semibold text-lg hover:opacity-90 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-pink-500/20 flex items-center justify-center gap-3"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span>Text to Image</span>
+                <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              <button
+                onClick={onNavigateToImageImage}
+                className="group w-full sm:w-auto px-8 py-4 bg-gray-800 border-2 border-gray-700 text-white rounded-xl font-semibold text-lg hover:border-pink-500 hover:bg-gray-700 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Image to Image</span>
+                <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -173,6 +214,111 @@ export default function HomePage({ onNavigateToText, onNavigateToImage }) {
           </div>
           <h3 className="text-lg font-semibold text-white mb-2">Pay Per Use</h3>
           <p className="text-sm text-gray-400">No subscriptions. Pay only for what you generate.</p>
+        </div>
+      </div>
+
+      {/* How It Works Section - Enhanced */}
+      <div className="relative mt-16 pt-12">
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-purple-500/5 to-transparent"></div>
+        <div className="relative bg-gradient-to-br from-gray-800/40 via-gray-800/30 to-gray-900/40 rounded-3xl p-8 md:p-12 border border-gray-700/50 backdrop-blur-sm">
+          <div className="text-center mb-12">
+            <div className="inline-block mb-4">
+              <span className="text-sm font-semibold text-purple-400 bg-purple-500/10 px-4 py-2 rounded-full border border-purple-500/20">
+                GET STARTED
+              </span>
+            </div>
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+              <span className="gradient-text">How It Works</span>
+            </h2>
+            <p className="text-lg text-gray-400 max-w-2xl mx-auto">
+              Generate videos in 3 simple steps.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+            {/* Connection Lines */}
+            <div className="hidden md:block absolute top-12 left-1/3 right-1/3 h-0.5 bg-gradient-to-r from-purple-500/30 via-pink-500/30 to-purple-500/30"></div>
+            {[
+              {
+                step: '1',
+                title: 'Connect Wallet',
+                description: 'Connect your wallet to pay with USDC and start generating videos in seconds.',
+                icon: (
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v2a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                ),
+                gradient: 'from-purple-500/20 to-pink-500/20',
+                extraContent: (
+                  <div className="mt-4 space-y-3 text-left">
+                    <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-white text-sm">Arc</span>
+                      </div>
+                      <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                        Arc is an EVM-compatible Layer-1 blockchain using USDC as native gas, built for stablecoin finance, tokenization, and global payments across scalable & transparent networks.
+                      </p>
+                      <div className="space-y-1.5">
+                        <div><a href="#" className="text-xs text-purple-400 hover:text-purple-300 transition-colors">👉 Read more about Arc</a></div>
+                        <div><a href="#" className="text-xs text-blue-400 hover:text-blue-300 transition-colors">💧 Testnet faucet — Circle</a></div>
+                        <div><a href="#" className="text-xs text-blue-400 hover:text-blue-300 transition-colors">💧 Testnet faucet — Easy Faucet</a></div>
+                        <div><a href="#" className="text-xs text-blue-400 hover:text-blue-300 transition-colors">💧 Testnet faucet — Oku</a></div>
+                      </div>
+                    </div>
+                    <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-white text-sm">Circle</span>
+                      </div>
+                      <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                        Circle is a global fintech company behind USDC, providing regulated, transparent, and programmable digital money infrastructure for businesses and developers.
+                      </p>
+                      <div><a href="#" className="text-xs text-purple-400 hover:text-purple-300 transition-colors">👉 Read more about Circle</a></div>
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                step: '2',
+                title: 'Create Prompt',
+                description: 'Enter your text prompt or upload an image. Customize settings like duration, quality, and style to match your vision.',
+                icon: (
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                ),
+                gradient: 'from-blue-500/20 to-cyan-500/20',
+              },
+              {
+                step: '3',
+                title: 'Generate & Download',
+                description: 'Pay with USDC and watch as our AI generates your video. Download your high-quality video instantly when ready.',
+                icon: (
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                ),
+                gradient: 'from-purple-500/20 to-blue-500/20',
+              },
+            ].map((item, idx) => (
+              <div
+                key={idx}
+                className="relative group"
+              >
+                <div className={`relative bg-gradient-to-br ${item.gradient} rounded-2xl p-8 border border-gray-700/50 hover:border-purple-500/70 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-purple-500/20`}>
+                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 w-14 h-14 gradient-purple-blue rounded-full flex items-center justify-center text-white font-bold text-xl shadow-2xl shadow-purple-500/50 z-10 group-hover:scale-110 transition-transform">
+                    {item.step}
+                  </div>
+                  <div className="pt-8">
+                    <div className="w-16 h-16 gradient-purple-blue rounded-2xl flex items-center justify-center text-white mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shadow-lg">
+                      {item.icon}
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-3 group-hover:text-purple-300 transition-colors">{item.title}</h3>
+                    <p className="text-sm text-gray-400 leading-relaxed">{item.description}</p>
+                    {item.extraContent && item.extraContent}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

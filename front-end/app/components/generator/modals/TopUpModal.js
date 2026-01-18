@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { useAuthStore } from '../../../store/authStore';
 import { claimTopUp, getCoinBalance } from '../../../lib/api';
-import { sendArcNativeUsdcPayment, waitForTxReceipt } from '../../../lib/arc';
+import { sendArcNativeUsdcPayment } from '../../../lib/arc';
 
 const COIN_ICON_SRC = '/assets/images/coin-3d.svg';
 
@@ -18,10 +18,28 @@ export default function TopUpModal() {
   const [amount, setAmount] = useState('1.00'); // USDC
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  // Only used for manual recovery when the transfer succeeded but coin crediting didn't.
   const [txHash, setTxHash] = useState('');
 
   const treasury = process.env.NEXT_PUBLIC_ARC_TREASURY_ADDRESS || '';
   const coinsPerUsdc = 100;
+
+  const friendlyTopUpError = (raw) => {
+    const msg = String(raw || '').trim();
+    if (!msg) return 'Top up failed';
+    // MetaMask / JSON-RPC often returns this; it is not actionable for users.
+    if (msg.toLowerCase().includes('invalid params')) {
+      return 'Transaction was sent. Waiting for network confirmation — please try “Claim coins” in a moment.';
+    }
+    if (msg.toLowerCase().includes('insufficient funds for gas')) {
+      return 'Saldo USDC di wallet (Arc testnet) tidak cukup untuk jumlah transfer + biaya gas. Silakan faucet/tambah USDC testnet atau kurangi amount top up.';
+    }
+    // Backend may bubble JSON-RPC error objects in a string.
+    if (msg.toLowerCase().includes('arc rpc error')) {
+      return 'Transaction was sent. Waiting for network confirmation — please try “Claim coins” in a moment.';
+    }
+    return msg;
+  };
 
   const claimWithTxHash = async (hash) => {
     await claimTopUp({ tx_hash: hash });
@@ -91,9 +109,6 @@ export default function TopUpModal() {
 
           {txHash && (
             <div className="mt-4">
-              <div className="p-3 bg-gray-800/40 border border-gray-700 rounded-lg text-xs text-gray-300 font-mono break-all">
-                Tx: {txHash}
-              </div>
               <div className="mt-3 flex items-center justify-between gap-3">
                 <p className="text-xs text-gray-400">
                   If your transfer succeeded but coins didn&apos;t update, click <span className="text-white">Claim coins</span>.
@@ -107,13 +122,14 @@ export default function TopUpModal() {
                     setIsLoading(true);
                     try {
                       await claimWithTxHash(txHash);
+                      setTxHash('');
                       closeTopUpModal();
                     } catch (e) {
                       const msg = e?.message || 'Claim failed';
                       if (String(msg).includes('ARC_TREASURY_ADDRESS is not set')) {
                         setError('Backend is missing ARC_TREASURY_ADDRESS. Add it to back-end/.env and restart backend, then click Claim coins again.');
                       } else {
-                        setError(msg);
+                        setError(friendlyTopUpError(msg));
                       }
                     } finally {
                       setIsLoading(false);
@@ -159,19 +175,25 @@ export default function TopUpModal() {
                     to: treasury,
                     amountUsdc: n.toFixed(2),
                   });
-                  setTxHash(hash);
-                  const receipt = await waitForTxReceipt(hash, { timeoutMs: 180000, pollMs: 2000 });
-                  if (!receipt || receipt.status !== '0x1') throw new Error('Transaction failed');
-
-                  await claimWithTxHash(hash);
-
-                  closeTopUpModal();
+                  try {
+                    await claimWithTxHash(hash);
+                    closeTopUpModal();
+                  } catch (e) {
+                    // Transfer succeeded, but crediting failed -> allow manual claim without showing the tx hash.
+                    setTxHash(hash);
+                    const msg = e?.message || 'Claim failed';
+                    if (String(msg).includes('ARC_TREASURY_ADDRESS is not set')) {
+                      setError('Backend is missing ARC_TREASURY_ADDRESS. Add it to back-end/.env and restart backend, then click Claim coins.');
+                    } else {
+                      setError(friendlyTopUpError(msg));
+                    }
+                  }
                 } catch (e) {
                   const msg = e?.message || 'Top up failed';
                   if (String(msg).includes('ARC_TREASURY_ADDRESS is not set')) {
                     setError('Backend is missing ARC_TREASURY_ADDRESS. Add it to back-end/.env and restart backend, then click Claim coins.');
                   } else {
-                    setError(msg);
+                    setError(friendlyTopUpError(msg));
                   }
                 } finally {
                   setIsLoading(false);

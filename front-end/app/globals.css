@@ -46,16 +46,15 @@ html {
 }
 
 /* Custom Scrollbar Styles */
-/* Left Sidebar Scrollbar - Purple/Blue theme, positioned on left */
 .custom-scrollbar-left {
-  direction: rtl; /* Reverse direction to put scrollbar on left */
+  direction: rtl;
   scrollbar-width: thin;
   scrollbar-color: #a855f7 rgba(31, 41, 55, 0.3);
-  padding-left: 12px; /* Gap between scrollbar and content */
+  padding-left: 12px;
 }
 
 .custom-scrollbar-left > * {
-  direction: ltr; /* Reset direction for content */
+  direction: ltr;
 }
 
 .custom-scrollbar-left::-webkit-scrollbar {
@@ -65,7 +64,7 @@ html {
 .custom-scrollbar-left::-webkit-scrollbar-track {
   background: rgba(31, 41, 55, 0.3);
   border-radius: 10px;
-  margin: 16px 0; /* Gap top and bottom for scrollbar track */
+  margin: 16px 0;
 }
 
 .custom-scrollbar-left::-webkit-scrollbar-thumb {
@@ -77,7 +76,6 @@ html {
   background: linear-gradient(135deg, #9333ea 0%, #2563eb 100%);
 }
 
-/* Right Panel Scrollbar - Different style */
 .custom-scrollbar-right::-webkit-scrollbar {
   width: 8px;
 }
@@ -96,20 +94,18 @@ html {
   background: rgba(107, 114, 128, 0.7);
 }
 
-/* Firefox - Right Panel */
 .custom-scrollbar-right {
   scrollbar-width: thin;
   scrollbar-color: rgba(107, 114, 128, 0.5) rgba(17, 24, 39, 0.5);
 }
 
-/* Hidden Scrollbar - For sidebar content */
 .hide-scrollbar {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .hide-scrollbar::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, Opera */
+  display: none;
 }
 
 /* ==============================
@@ -152,4 +148,237 @@ html {
   .ps-marquee__track {
     animation: none;
   }
+}
+
+/* ==============================
+   Professional 3D Animations
+   ============================== */
+
+/* Smooth fade-in with 3D depth */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px) translateZ(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) translateZ(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Professional card hover with subtle 3D */
+.card-hover-3d {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-style: preserve-3d;
+}
+
+.card-hover-3d:hover {
+  transform: translateY(-8px) translateZ(20px);
+  box-shadow: 0 20px 40px rgba(168, 85, 247, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Glass morphism modern */
+.glass-modern {
+  background: rgba(17, 24, 39, 0.7);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* Professional button with 3D effect */
+.btn-3d {
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-style: preserve-3d;
+}
+
+.btn-3d::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.4), rgba(59, 130, 246, 0.4));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  filter: blur(20px);
+  z-index: -1;
+}
+
+.btn-3d:hover {
+  transform: translateY(-2px) translateZ(10px);
+  box-shadow: 0 10px 30px rgba(168, 85, 247, 0.3);
+}
+
+.btn-3d:hover::before {
+  opacity: 1;
+}
+
+.btn-3d:active {
+  transform: translateY(0) translateZ(5px);
+}
+
+/* Smooth scale animation */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateZ(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateZ(0);
+  }
+}
+
+.scale-in {
+  animation: scaleIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Professional tilt effect */
+.tilt-container {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+.tilt-element {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-style: preserve-3d;
+}
+
+/* Gradient border animation */
+@keyframes gradient-border {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.gradient-border {
+  position: relative;
+  background: linear-gradient(135deg, #a855f7, #3b82f6, #06b6d4);
+  background-size: 200% 200%;
+  animation: gradient-border 3s ease infinite;
+  padding: 1px;
+  border-radius: 12px;
+}
+
+.gradient-border > * {
+  background: rgba(17, 24, 39, 0.95);
+  border-radius: 11px;
+}
+
+/* Shimmer effect professional */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.shimmer-effect {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Floating animation subtle */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+.float-animation {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Pulse glow */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(168, 85, 247, 0.6);
+  }
+}
+
+.pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+/* Stagger animation delay */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }
+.stagger-6 { animation-delay: 0.6s; }
+
+/* Text reveal animation */
+@keyframes textReveal {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.text-reveal {
+  animation: textReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Professional card flip */
+.card-flip {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+.card-flip-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-style: preserve-3d;
+}
+
+.card-flip:hover .card-flip-inner {
+  transform: rotateY(180deg);
+}
+
+.card-flip-front,
+.card-flip-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.card-flip-back {
+  transform: rotateY(180deg);
+}
+
+/* Smooth parallax */
+.parallax-smooth {
+  will-change: transform;
+  transition: transform 0.1s ease-out;
 }

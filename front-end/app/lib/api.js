@@ -3,9 +3,56 @@
 // Gunakan localhost agar konsisten dengan URL di browser
 const API_BASE_URL = 'http://localhost:8001';
 
+// Cookie helper functions
+const setCookie = (name, value, days = 1) => {
+  if (typeof window === 'undefined') return;
+  const expires = new Date();
+  expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+  document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`;
+};
+
+const getCookie = (name) => {
+  if (typeof window === 'undefined') return null;
+  const nameEQ = name + '=';
+  const ca = document.cookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+    if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+  }
+  return null;
+};
+
+const deleteCookie = (name) => {
+  if (typeof window === 'undefined') return;
+  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`;
+};
+
 // Helper function for error handling
 const handleResponse = async (response) => {  
   if (!response.ok) {
+    // Handle 401 Unauthorized - token expired or invalid
+    if (response.status === 401) {
+      // Clear token from localStorage and cookie
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('access_token');
+        deleteCookie('access_token');
+        
+        // Clear user from auth store if available
+        try {
+          const { useAuthStore } = await import('../store/authStore');
+          useAuthStore.getState().logout();
+        } catch (e) {
+          // Auth store might not be available, ignore
+        }
+        
+        // Redirect to home page (which will show login modal)
+        if (window.location.pathname !== '/') {
+          window.location.href = '/';
+        }
+      }
+    }
+    
     let errorMessage = 'Request failed';
     try {
       const error = await response.json();
@@ -35,8 +82,8 @@ export const registerUser = async (data) => {
 
     return await handleResponse(response);
   } catch (error) {
-    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-      throw new Error('Cannot connect to server. Please make sure the backend is running on http://127.0.0.1:8000');
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
     }
     throw error;
   }
@@ -59,15 +106,16 @@ export const loginUser = async (data) => {
 
     const result = await handleResponse(response);
 
-    // Store token in localStorage
+    // Store token in localStorage and cookie (1 day expiry)
     if (result.access_token) {
       localStorage.setItem('access_token', result.access_token);
+      setCookie('access_token', result.access_token, 1);
     }
 
     return result;
   } catch (error) {
-    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-      throw new Error('Cannot connect to server. Please make sure the backend is running on http://127.0.0.1:8000');
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
     }
     throw error;
   }
@@ -88,8 +136,8 @@ export const forgotPassword = async (data) => {
 
     return await handleResponse(response);
   } catch (error) {
-    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-      throw new Error('Cannot connect to server. Please make sure the backend is running on http://127.0.0.1:8000');
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
     }
     throw error;
   }
@@ -111,8 +159,8 @@ export const resetPassword = async (data) => {
 
     return await handleResponse(response);
   } catch (error) {
-    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-      throw new Error('Cannot connect to server. Please make sure the backend is running on http://127.0.0.1:8000');
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
     }
     throw error;
   }
@@ -123,25 +171,39 @@ export const resetPassword = async (data) => {
 // ==============================
 
 export const getCoinBalance = async () => {
-  const response = await fetch(`${API_BASE_URL}/coins/balance`, {
-    method: 'GET',
-    headers: {
-      ...getAuthHeaders(),
-    },
-  });
-  return await handleResponse(response);
+  try {
+    const response = await fetch(`${API_BASE_URL}/coins/balance`, {
+      method: 'GET',
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+    }
+    throw error;
+  }
 };
 
 export const claimTopUp = async ({ tx_hash }) => {
-  const response = await fetch(`${API_BASE_URL}/coins/topup/claim`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-    },
-    body: JSON.stringify({ tx_hash }),
-  });
-  return await handleResponse(response);
+  try {
+    const response = await fetch(`${API_BASE_URL}/coins/topup/claim`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({ tx_hash }),
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+    }
+    throw error;
+  }
 };
 
 // ==============================
@@ -149,18 +211,25 @@ export const claimTopUp = async ({ tx_hash }) => {
 // ==============================
 
 export const enhancePrompt = async ({ idea, existing_prompt }) => {
-  const response = await fetch(`${API_BASE_URL}/ai/enhance-prompt`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-    },
-    body: JSON.stringify({
-      idea,
-      existing_prompt: existing_prompt || null,
-    }),
-  });
-  return await handleResponse(response);
+  try {
+    const response = await fetch(`${API_BASE_URL}/ai/enhance-prompt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({
+        idea,
+        existing_prompt: existing_prompt || null,
+      }),
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+    }
+    throw error;
+  }
 };
 
 // ==============================
@@ -168,33 +237,149 @@ export const enhancePrompt = async ({ idea, existing_prompt }) => {
 // ==============================
 
 const getAuthHeaders = () => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+  // Try cookie first, then fallback to localStorage
+  const token = typeof window !== 'undefined' 
+    ? (getCookie('access_token') || localStorage.getItem('access_token'))
+    : null;
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-export const createTextToVideoJob = async ({ prompt, model, aspect_ratio }) => {
-  const response = await fetch(`${API_BASE_URL}/video/text-to-video`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders(),
-    },
-    body: JSON.stringify({
-      prompt,
-      model,
-      aspect_ratio,
-    }),
-  });
-  return await handleResponse(response);
+export const createTextToVideoJob = async ({
+  prompt,
+  model,
+  aspect_ratio,
+  provider,
+  duration_seconds,
+  resolution,
+  quality,
+  image_urls,
+  callback_url,
+  watermark,
+}) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/video/text-to-video`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({
+        prompt,
+        model,
+        aspect_ratio,
+        provider,
+        duration_seconds,
+        resolution,
+        quality,
+        image_urls,
+        callback_url,
+        watermark,
+      }),
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+    }
+    throw error;
+  }
 };
 
 export const getVideoJob = async (jobId) => {
-  const response = await fetch(`${API_BASE_URL}/video/jobs/${jobId}`, {
-    method: 'GET',
-    headers: {
-      ...getAuthHeaders(),
-    },
-  });
-  return await handleResponse(response);
+  try {
+    const response = await fetch(`${API_BASE_URL}/video/jobs/${jobId}`, {
+      method: 'GET',
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+    }
+    throw error;
+  }
+};
+
+// ==============================
+// Image generation (Text to Image / Image to Image)
+// ==============================
+
+export const createTextToImageJob = async ({
+  prompt,
+  model,
+  aspect_ratio,
+}) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/image/text-to-image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({
+        prompt,
+        model,
+        aspect_ratio,
+      }),
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+    }
+    throw error;
+  }
+};
+
+export const createImageToImageJob = async ({
+  prompt,
+  image_url,
+  image_url2,
+  model,
+  mode,
+  aspect_ratio,
+}) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/image/image-to-image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({
+        prompt,
+        image_url,
+        image_url2,
+        model,
+        mode,
+        aspect_ratio,
+      }),
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+    }
+    throw error;
+  }
+};
+
+export const getImageJob = async (jobId) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/image/job/${jobId}`, {
+      method: 'GET',
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
+      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+    }
+    throw error;
+  }
 };
 

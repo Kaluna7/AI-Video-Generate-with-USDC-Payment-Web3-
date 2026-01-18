@@ -7,13 +7,16 @@ import SidebarNav from '../components/generator/layout/SidebarNav';
 import HomePage from '../components/generator/pages/HomePage';
 import InspirationPage from '../components/generator/pages/InspirationPage';
 import MyVideosPage from '../components/generator/pages/MyVideosPage';
+import MyImagesPage from '../components/generator/pages/MyImagesPage';
+import TextToImagePage from '../components/generator/pages/TextToImagePage';
+import ImageToImagePage from '../components/generator/pages/ImageToImagePage';
 import CreateVideoPanel from '../components/generator/panels/CreateVideoPanel';
 import VideoPreviewPanel from '../components/generator/panels/VideoPreviewPanel';
 import TextToVideoSection from '../components/generator/sections/TextToVideoSection';
 import ImageToVideoSection from '../components/generator/sections/ImageToVideoSection';
 import GenerateConfirmModal from '../components/generator/modals/GenerateConfirmModal';
 import { useAuthStore } from '../store/authStore';
-import { createTextToVideoJob, getCoinBalance, getVideoJob } from '../lib/api';
+import { createTextToVideoJob, getCoinBalance, getVideoJob, createTextToImageJob, getImageJob } from '../lib/api';
 import { addVideoHistoryItem, formatRelativeTime, getVideoHistory } from '../lib/videoHistory';
 
 export default function GeneratorPage() {
@@ -24,9 +27,21 @@ export default function GeneratorPage() {
   const [activeTab, setActiveTab] = useState('text');
   const [prompt, setPrompt] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('Cinematic');
+  // Provider selection (UI-driven; backend can still default via VIDEO_PROVIDER)
+  const [videoProvider, setVideoProvider] = useState('veo3'); // veo3 | sora2 | kling
+
   // Veo 3.1 params
   const [veoModel, setVeoModel] = useState('veo3-fast'); // veo3-fast | veo3
   const [veoAspectRatio, setVeoAspectRatio] = useState('16:9'); // 16:9 | 9:16 | Auto
+
+  // Sora2API params (api.sora2api.ai)
+  const [soraAspectRatio, setSoraAspectRatio] = useState('landscape'); // landscape | portrait
+  const [soraQuality, setSoraQuality] = useState('standard'); // standard | hd
+  const [soraWatermark, setSoraWatermark] = useState('');
+  const [soraImageUrls, setSoraImageUrls] = useState(''); // newline-separated URLs
+
+  // Kling AI params
+  const [klingModel, setKlingModel] = useState('v2-1-master'); // v1-0, v1-6, v2-0, v2-1-master, v2-5-turbo, v2-6
 
   // Legacy UI state (kept so existing components don't break if referenced elsewhere)
   const [selectedLength, setSelectedLength] = useState('10s');
@@ -57,6 +72,11 @@ export default function GeneratorPage() {
     }
   }, [user, router]);
 
+  // Scroll to top when view changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [currentView]);
+
   // Local history is stored per "account". Prefer app user id, fall back to connected wallet, else anonymous.
   const historyUserId = user?.id || walletAddress || 'anonymous';
 
@@ -66,9 +86,29 @@ export default function GeneratorPage() {
 
   const { coinBalance, setCoinBalance, openTopUpModal } = useAuthStore();
 
+  // Keep UI coin balance in sync with backend (authoritative)
+  useEffect(() => {
+    (async () => {
+      try {
+        const bal = await getCoinBalance();
+        if (bal && typeof bal.coins === 'number') setCoinBalance(bal.coins);
+      } catch {
+        // ignore (backend might be down during dev)
+      }
+    })();
+  }, [setCoinBalance]);
+
   // Calculate generation cost
   const calculateCost = () => {
-    // Coins pricing (matches Veo credits): veo3-fast = 25, veo3 = 180
+    // Coins pricing buckets: fast/standard=25, HQ/pro=180
+    if (videoProvider === 'sora2') {
+      return (soraQuality || '').toLowerCase() === 'hd' ? 180 : 25;
+    }
+    if (videoProvider === 'kling') {
+      // Kling AI: v2-0, v2-1-master, v2-5-turbo, v2-6 = 180 coins, v1-0, v1-6 = 25 coins
+      const model = (klingModel || '').toLowerCase();
+      return (model.includes('v2') || model.includes('2.1') || model.includes('2.0') || model.includes('2.5') || model.includes('2.6')) ? 180 : 25;
+    }
     return veoModel === 'veo3' ? 180 : 25;
   };
 
@@ -78,26 +118,73 @@ export default function GeneratorPage() {
 
   const handleConfirmGeneration = () => {
     const cost = calculateCost();
-    if ((coinBalance || 0) < cost) {
-      openTopUpModal?.();
-      return;
-    }
-
-    // Start backend generation job (Text tab -> text-to-video)
-    setGenerationError('');
-    setVideoUrl(null);
-    setVideoJobId(null);
-
     (async () => {
       try {
         setIsConfirmModalOpen(false);
+        // Re-check balance from backend right before spending (localStorage can be stale)
+        let latestCoins = Number(coinBalance || 0);
+        try {
+          const bal = await getCoinBalance();
+          if (bal && typeof bal.coins === 'number') {
+            latestCoins = Number(bal.coins || 0);
+            setCoinBalance(bal.coins);
+          }
+        } catch {
+          // ignore
+        }
+
+        if (latestCoins < cost) {
+          setGenerationStatus('waiting');
+          setGenerationError(`Insufficient coins: you have ${Math.floor(latestCoins)} but need ${Math.floor(cost)}.`);
+          openTopUpModal?.();
+          return;
+        }
+
+        // Start backend generation job (Text tab -> text-to-video)
+        setGenerationError('');
+        setVideoUrl(null);
+        setVideoJobId(null);
+
         setGenerationStatus('generating');
 
-        const job = await createTextToVideoJob({
-          prompt,
-          model: veoModel,
-          aspect_ratio: veoAspectRatio,
-        });
+        let job;
+        if (videoProvider === 'sora2') {
+          job = await createTextToVideoJob({
+            prompt,
+            provider: 'sora2',
+            aspect_ratio: soraAspectRatio,
+            quality: soraQuality,
+            watermark: soraWatermark || null,
+            image_urls: soraImageUrls
+              ? soraImageUrls
+                  .split('\n')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : null,
+          });
+        } else if (videoProvider === 'kling') {
+          // Kling AI supports text-to-video and image-to-video
+          const imageUrls = activeTab === 'image' && soraImageUrls
+            ? soraImageUrls
+                .split('\n')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : null;
+          job = await createTextToVideoJob({
+            prompt,
+            provider: 'kling',
+            model: klingModel,
+            duration_seconds: parseInt(selectedLength) || 5,
+            image_urls: imageUrls,
+          });
+        } else {
+          job = await createTextToVideoJob({
+            prompt,
+            provider: 'veo3',
+            model: veoModel,
+            aspect_ratio: veoAspectRatio,
+          });
+        }
         setVideoJobId(job.job_id);
         // Refresh coin balance from backend (authoritative)
         try {
@@ -172,8 +259,23 @@ export default function GeneratorPage() {
           });
           setHistoryTick((t) => t + 1);
         } else if (job.status === 'failed') {
-          setGenerationError(job.error || 'Generation failed');
+          const raw = job.error || 'Generation failed';
+          const lower = String(raw).toLowerCase();
+          const msg =
+            lower.includes('maintenance') || lower.includes('code=455')
+              ? 'Sora2API sedang maintenance. Silakan coba lagi nanti.'
+              : lower.includes('internal error')
+                ? 'Sora2API sedang bermasalah (internal error). Silakan coba generate lagi beberapa menit kemudian.'
+                : raw;
+          setGenerationError(msg);
           setGenerationStatus('waiting');
+          // Refresh balance (may have been refunded on backend)
+          try {
+            const bal = await getCoinBalance();
+            if (bal && typeof bal.coins === 'number') setCoinBalance(bal.coins);
+          } catch {
+            // ignore
+          }
           clearInterval(interval);
         }
       } catch (e) {
@@ -199,6 +301,14 @@ export default function GeneratorPage() {
     setActiveTab('image');
   };
 
+  const handleNavigateToTextImage = () => {
+    setCurrentView('text-to-image');
+  };
+
+  const handleNavigateToImageImage = () => {
+    setCurrentView('image-to-image');
+  };
+
   const handleNavigateToHome = () => {
     setCurrentView('home');
   };
@@ -209,6 +319,10 @@ export default function GeneratorPage() {
 
   const handleNavigateToMyVideos = () => {
     setCurrentView('my-videos');
+  };
+
+  const handleNavigateToMyImages = () => {
+    setCurrentView('my-images');
   };
 
   if (!user) {
@@ -225,6 +339,9 @@ export default function GeneratorPage() {
         onNavigateToMyVideos={handleNavigateToMyVideos}
         onNavigateToText={handleNavigateToText}
         onNavigateToImage={handleNavigateToImage}
+        onNavigateToTextImage={handleNavigateToTextImage}
+        onNavigateToImageImage={handleNavigateToImageImage}
+        onNavigateToMyImages={handleNavigateToMyImages}
       />
 
       <div className="lg:pl-20 pt-20 pb-8">
@@ -233,6 +350,8 @@ export default function GeneratorPage() {
             <HomePage
               onNavigateToText={handleNavigateToText}
               onNavigateToImage={handleNavigateToImage}
+              onNavigateToTextImage={handleNavigateToTextImage}
+              onNavigateToImageImage={handleNavigateToImageImage}
             />
           ) : currentView === 'inspiration' ? (
             <InspirationPage 
@@ -244,6 +363,58 @@ export default function GeneratorPage() {
             />
           ) : currentView === 'my-videos' ? (
             <MyVideosPage />
+          ) : currentView === 'my-images' ? (
+            <MyImagesPage />
+          ) : currentView === 'text-to-image' ? (
+            <TextToImagePage
+              onGenerate={async (params) => {
+                try {
+                  const job = await createTextToImageJob({
+                    prompt: params.prompt,
+                    model: params.model,
+                    aspect_ratio: params.aspectRatio,
+                  });
+                  // Refresh balance after generation
+                  try {
+                    const bal = await getCoinBalance();
+                    if (bal && typeof bal.coins === 'number') setCoinBalance(bal.coins);
+                  } catch {
+                    // ignore
+                  }
+                  return { jobId: job.job_id, imageUrl: job.image_url };
+                } catch (error) {
+                  throw error;
+                }
+              }}
+              onNavigateToMyImages={handleNavigateToMyImages}
+            />
+          ) : currentView === 'image-to-image' ? (
+            <ImageToImagePage
+              onGenerate={async (params) => {
+                try {
+                  const { createImageToImageJob, getCoinBalance } = await import('../lib/api');
+                  const job = await createImageToImageJob({
+                    prompt: params.prompt || '',
+                    image_url: params.imageUrl,
+                    image_url2: params.imageUrl2,
+                    model: params.model,
+                    mode: params.mode,
+                    aspect_ratio: params.aspectRatio,
+                  });
+                  // Refresh balance after generation
+                  try {
+                    const bal = await getCoinBalance();
+                    if (bal && typeof bal.coins === 'number') setCoinBalance(bal.coins);
+                  } catch {
+                    // ignore
+                  }
+                  return { jobId: job.job_id, imageUrl: job.image_url };
+                } catch (error) {
+                  throw error;
+                }
+              }}
+              onNavigateToMyImages={handleNavigateToMyImages}
+            />
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
               {/* Left Panel - Create Video */}
@@ -263,10 +434,22 @@ export default function GeneratorPage() {
                     setResolution={setResolution}
                     frameRate={frameRate}
                     setFrameRate={setFrameRate}
+                    videoProvider={videoProvider}
+                    setVideoProvider={setVideoProvider}
                     veoModel={veoModel}
                     setVeoModel={setVeoModel}
                     veoAspectRatio={veoAspectRatio}
                     setVeoAspectRatio={setVeoAspectRatio}
+                    soraAspectRatio={soraAspectRatio}
+                    setSoraAspectRatio={setSoraAspectRatio}
+                    soraQuality={soraQuality}
+                    setSoraQuality={setSoraQuality}
+                    soraWatermark={soraWatermark}
+                    setSoraWatermark={setSoraWatermark}
+                    soraImageUrls={soraImageUrls}
+                    setSoraImageUrls={setSoraImageUrls}
+                    klingModel={klingModel}
+                    setKlingModel={setKlingModel}
                     aiEnhancement={aiEnhancement}
                     setAiEnhancement={setAiEnhancement}
                     onGenerate={handleGenerateClick}
