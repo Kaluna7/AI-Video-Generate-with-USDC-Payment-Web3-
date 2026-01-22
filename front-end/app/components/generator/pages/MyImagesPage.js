@@ -1,10 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuthStore } from '../../../store/authStore';
+import { getImageHistory, deleteImageHistoryItem } from '../../../lib/imageHistory';
 
 export default function MyImagesPage() {
   const [images, setImages] = useState([]);
   const [filter, setFilter] = useState('all'); // 'all', 'text-to-image', 'image-to-image'
+  const [historyTick, setHistoryTick] = useState(0);
+  const user = useAuthStore((state) => state.user);
+  const walletAddress = useAuthStore((state) => state.walletAddress);
+
+  // Local history is stored per "account". Prefer app user id, fall back to connected wallet, else anonymous.
+  const historyUserId = user?.id || walletAddress || 'anonymous';
 
   // Scroll to top on mount
   useEffect(() => {
@@ -15,11 +23,8 @@ export default function MyImagesPage() {
     // Load images from localStorage
     const loadImages = () => {
       try {
-        const stored = localStorage.getItem('generated_images');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          setImages(parsed);
-        }
+        const loaded = getImageHistory(historyUserId);
+        setImages(loaded);
       } catch (error) {
         console.error('Error loading images:', error);
       }
@@ -31,16 +36,25 @@ export default function MyImagesPage() {
     const handleStorageChange = () => {
       loadImages();
     };
-    window.addEventListener('storage', handleStorageChange);
     
-    // Also check periodically for changes (same-tab updates)
-    const interval = setInterval(loadImages, 1000);
+    // Listen for custom event (same-tab updates)
+    const handleImageHistoryUpdated = () => {
+      setHistoryTick((t) => t + 1);
+      loadImages();
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleStorageChange);
+      window.addEventListener('primeStudio:imageHistoryUpdated', handleImageHistoryUpdated);
+    }
     
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', handleStorageChange);
+        window.removeEventListener('primeStudio:imageHistoryUpdated', handleImageHistoryUpdated);
+      }
     };
-  }, []);
+  }, [historyUserId, historyTick]);
 
   const filteredImages = filter === 'all' 
     ? images 
@@ -58,9 +72,74 @@ export default function MyImagesPage() {
   };
 
   const handleDelete = (id) => {
-    const updated = images.filter(img => img.id !== id);
-    setImages(updated);
-    localStorage.setItem('generated_images', JSON.stringify(updated));
+    if (!confirm(`Are you sure you want to delete this image? This action cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      deleteImageHistoryItem(historyUserId, id);
+      setHistoryTick((t) => t + 1);
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      alert('Failed to delete image. Please try again.');
+    }
+  };
+
+  const handleDownload = async (image) => {
+    try {
+      let blob;
+      let filename = `image-${image.id}.jpg`;
+
+      // Check if it's a base64 data URL
+      if (image.url.startsWith('data:image/')) {
+        // Extract base64 data and convert to blob
+        const response = await fetch(image.url);
+        blob = await response.blob();
+        
+        // Determine file extension from MIME type
+        const mimeType = image.url.split(';')[0].split(':')[1];
+        const ext = mimeType.split('/')[1] || 'png';
+        filename = `image-${image.id}.${ext}`;
+      } else {
+        // For HTTP/HTTPS URLs, fetch the image
+        const response = await fetch(image.url);
+        if (!response.ok) {
+          throw new Error('Failed to fetch image');
+        }
+        blob = await response.blob();
+        
+        // Try to get filename from URL or Content-Disposition header
+        const contentDisposition = response.headers.get('Content-Disposition');
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+          }
+        } else {
+          // Extract extension from URL
+          const urlPath = new URL(image.url).pathname;
+          const urlExt = urlPath.split('.').pop();
+          if (urlExt && ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(urlExt.toLowerCase())) {
+            filename = `image-${image.id}.${urlExt}`;
+          }
+        }
+      }
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading image:', error);
+      alert('Failed to download image. Please try again.');
+    }
   };
 
   return (
@@ -201,12 +280,7 @@ export default function MyImagesPage() {
                     <span className="text-[10px] text-gray-400">{formatDate(image.createdAt)}</span>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => {
-                          const link = document.createElement('a');
-                          link.href = image.url;
-                          link.download = `image-${image.id}.jpg`;
-                          link.click();
-                        }}
+                        onClick={() => handleDownload(image)}
                         className="p-1.5 bg-gray-700/80 hover:bg-gray-600 rounded transition-colors"
                         title="Download"
                       >

@@ -1,12 +1,33 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
 
-const API_BASE_URL = 'http://localhost:8001';
+// Cookie helper function (same as in api.js)
+const setCookie = (name, value, days = 1) => {
+  if (typeof window === 'undefined') return;
+  const expires = new Date();
+  expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
+  document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`;
+};
 
-export default function GoogleAuthCallbackPage() {
+// Get API base URL
+const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:8001';
+    }
+    return `http://${hostname}:8001`;
+  }
+  return 'http://localhost:8001';
+};
+
+function GoogleAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const setUser = useAuthStore((s) => s.setUser);
@@ -26,15 +47,34 @@ export default function GoogleAuthCallbackPage() {
       return;
     }
 
-    localStorage.setItem('access_token', token);
+    // Store token in localStorage
+    try {
+      localStorage.setItem('access_token', token);
+      // Verify it was stored
+      const stored = localStorage.getItem('access_token');
+      if (stored !== token) {
+        console.error('Failed to store token in localStorage');
+        setMessage('Failed to save authentication token. Please try again.');
+        return;
+      }
+    } catch (e) {
+      console.error('Error storing token in localStorage:', e);
+      setMessage('Failed to save authentication token. Please check your browser settings.');
+      return;
+    }
     
     // Also set cookie with 1 day expiry
-    const expires = new Date();
-    expires.setTime(expires.getTime() + 1 * 24 * 60 * 60 * 1000);
-    document.cookie = `access_token=${token};expires=${expires.toUTCString()};path=/;SameSite=Lax`;
+    try {
+      setCookie('access_token', token, 1);
+    } catch (e) {
+      console.error('Error setting cookie:', e);
+      // Continue anyway, localStorage is more important
+    }
 
+    // Fetch user info and redirect
     (async () => {
       try {
+        const API_BASE_URL = getApiBaseUrl();
         const res = await fetch(`${API_BASE_URL}/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -43,8 +83,13 @@ export default function GoogleAuthCallbackPage() {
         }
         const user = await res.json();
         setUser(user);
-        router.replace('/generator');
+        
+        // Small delay to ensure state is saved before redirect
+        setTimeout(() => {
+          router.replace('/generator');
+        }, 100);
       } catch (e) {
+        console.error('Failed to fetch user info:', e);
         setMessage('Signed in, but failed to load profile. Please try again.');
       }
     })();
@@ -62,4 +107,20 @@ export default function GoogleAuthCallbackPage() {
   );
 }
 
+export default function GoogleAuthCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-black px-6">
+        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#06080c]/90 p-6 text-center">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
+            PrimeStudio
+          </h1>
+          <p className="mt-3 text-gray-300">Loading...</p>
+        </div>
+      </div>
+    }>
+      <GoogleAuthCallbackContent />
+    </Suspense>
+  );
+}
 

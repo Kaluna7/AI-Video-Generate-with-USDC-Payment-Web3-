@@ -2,13 +2,122 @@
 
 import { useEffect, useState } from 'react';
 
+// Video Modal Component
+function VideoModal({ isOpen, onClose, videoSrc, title, description }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div className="relative bg-gray-900 rounded-2xl border border-gray-700 w-full max-w-4xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+          <div>
+            <h2 className="text-lg font-semibold text-white">{title}</h2>
+            <p className="text-sm text-gray-400 mt-1">{description}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Video Player */}
+        <div className="p-6">
+          <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg border border-gray-700 flex items-center justify-center relative overflow-hidden max-w-full">
+            <video
+              className="w-full aspect-video rounded-lg"
+              src={videoSrc}
+              controls
+              autoPlay
+              playsInline
+              preload="metadata"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end p-6 bg-gray-800/50 border-t border-gray-700">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function InspirationPage({ onGenerateWithPrompt }) {
   const [contentType, setContentType] = useState('videos'); // 'videos' or 'images'
   const [selectedCategory, setSelectedCategory] = useState('All');
-  
+
+  // Modal state
+  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+
   // Scroll to top on mount
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  // Video modal handlers
+  const openVideoModal = (video) => {
+    setSelectedVideo(video);
+    setIsVideoModalOpen(true);
+  };
+
+  const closeVideoModal = () => {
+    setSelectedVideo(null);
+    setIsVideoModalOpen(false);
+  };
+
+  // Auto-play videos on mobile when they come into view
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const isMobile = window.innerWidth < 768;
+    if (!isMobile) return; // Only for mobile
+
+    const observerOptions = {
+      threshold: 0.5, // 50% of video must be visible
+      rootMargin: '0px 0px -50px 0px'
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const video = entry.target;
+        if (entry.isIntersecting) {
+          // Video is in view, try to play
+          video.play().catch(() => {
+            // Autoplay failed, user will need to tap to play
+          });
+        } else {
+          // Video is out of view, pause
+          video.pause();
+        }
+      });
+    }, observerOptions);
+
+    // Observe all videos on the page
+    const videos = document.querySelectorAll('video');
+    videos.forEach(video => observer.observe(video));
+
+    return () => {
+      videos.forEach(video => observer.unobserve(video));
+    };
   }, []);
 
   const inspirationVideos = [
@@ -18,7 +127,7 @@ export default function InspirationPage({ onGenerateWithPrompt }) {
       description: 'A cinematic drone shot flying over a futuristic city at sunset with neon lights illuminating the skyline',
       promptTitle: 'Futuristic Cityscape',
       promptText: 'A cinematic drone shot flying over a futuristic city at sunset with neon lights illuminating the skyline',
-      thumbnail: 'cityscape',
+      videoSrc: '/assets/video/city.mp4',
       duration: '10s',
       style: 'Cinematic',
       category: 'Urban',
@@ -27,106 +136,106 @@ export default function InspirationPage({ onGenerateWithPrompt }) {
     },
     {
       id: 2,
-      title: 'Ocean Waves',
-      description: 'Dramatic ocean waves crashing against rocky cliffs with golden hour lighting',
-      promptTitle: 'Ocean Waves',
-      promptText: 'Dramatic ocean waves crashing against rocky cliffs with golden hour lighting',
-      thumbnail: 'ocean',
-      duration: '15s',
+      title: 'Samoyed Adventure',
+      description: 'A playful samoyed dog exploring and having fun in various scenes',
+      promptTitle: 'Samoyed Adventure',
+      promptText: 'A playful samoyed dog exploring and having fun in various scenes',
+      videoSrc: '/assets/video/samoyed.mp4',
+      duration: '8s',
       style: 'Realistic',
       category: 'Nature',
-      views: '8.3k',
-      likes: '654',
-    },
-    {
-      id: 3,
-      title: 'Abstract Art',
-      description: 'Colorful abstract patterns flowing and morphing in a mesmerizing dance',
-      promptTitle: 'Abstract Art',
-      promptText: 'Colorful abstract patterns flowing and morphing in a mesmerizing dance',
-      thumbnail: 'abstract',
-      duration: '8s',
-      style: 'Abstract',
-      category: 'Art',
-      views: '15.2k',
+      views: '15.3k',
       likes: '1.2k',
     },
     {
-      id: 4,
-      title: 'Mountain Landscape',
-      description: 'Aerial view of snow-capped mountains at golden hour with dramatic clouds',
-      promptTitle: 'Mountain Landscape',
-      promptText: 'Aerial view of snow-capped mountains at golden hour with dramatic clouds',
-      thumbnail: 'mountain',
+      id: 3,
+      title: 'Stickman Animation',
+      description: 'Fun stickman character with creative movements and animations',
+      promptTitle: 'Stickman Animation',
+      promptText: 'Fun stickman character with creative movements and animations',
+      videoSrc: '/assets/video/stickman.mp4',
       duration: '12s',
-      style: 'Cinematic',
-      category: 'Nature',
-      views: '9.7k',
-      likes: '743',
-    },
-    {
-      id: 5,
-      title: 'Neon Cyberpunk',
-      description: 'Cyberpunk street with neon lights and flying vehicles in a futuristic city',
-      promptTitle: 'Neon Cyberpunk',
-      promptText: 'Cyberpunk street with neon lights and flying vehicles in a futuristic city',
-      thumbnail: 'cyberpunk',
-      duration: '10s',
-      style: '3D Render',
-      category: 'Sci-Fi',
-      views: '18.9k',
+      style: 'Animation',
+      category: 'Art',
+      views: '18.2k',
       likes: '1.5k',
     },
     {
-      id: 6,
-      title: 'Forest Path',
-      description: 'Peaceful walk through a mystical forest with sunlight rays filtering through trees',
-      promptTitle: 'Forest Path',
-      promptText: 'Peaceful walk through a mystical forest with sunlight rays filtering through trees',
-      thumbnail: 'forest',
+      id: 4,
+      title: 'Ferrari Race',
+      description: 'High-speed Ferrari racing through scenic routes and landscapes',
+      promptTitle: 'Ferrari Race',
+      promptText: 'High-speed Ferrari racing through scenic routes and landscapes',
+      videoSrc: '/assets/video/ferrari.mp4',
+      duration: '10s',
+      style: 'Cinematic',
+      category: 'Urban',
+      views: '21.7k',
+      likes: '1.8k',
+    },
+    {
+      id: 5,
+      title: 'Space Journey',
+      description: 'Epic journey through space with planets and nebula clouds',
+      promptTitle: 'Space Journey',
+      promptText: 'Epic journey through space with planets and nebula clouds',
+      videoSrc: '/assets/video/plane_jupiter.mp4',
       duration: '15s',
-      style: 'Realistic',
-      category: 'Nature',
-      views: '11.4k',
-      likes: '856',
+      style: 'Sci-Fi',
+      category: 'Space',
+      views: '25.1k',
+      likes: '2.2k',
+    },
+    {
+      id: 6,
+      title: 'Robot Dance',
+      description: 'Cool robot performing amazing dance moves and choreography',
+      promptTitle: 'Robot Dance',
+      promptText: 'Cool robot performing amazing dance moves and choreography',
+      videoSrc: '/assets/video/robot.mp4',
+      duration: '8s',
+      style: '3D Animation',
+      category: 'Sci-Fi',
+      views: '19.4k',
+      likes: '1.6k',
     },
     {
       id: 7,
-      title: 'Space Nebula',
-      description: 'Cosmic nebula with swirling colors and distant stars in deep space',
-      promptTitle: 'Space Nebula',
-      promptText: 'Cosmic nebula with swirling colors and distant stars in deep space',
-      thumbnail: 'space',
-      duration: '20s',
-      style: 'Abstract',
-      category: 'Space',
-      views: '22.1k',
-      likes: '2.1k',
+      title: 'Samoyed Playtime',
+      description: 'Adorable samoyed playing with a ball in the park with joyful movements',
+      promptTitle: 'Samoyed Playtime',
+      promptText: 'Adorable samoyed playing with a ball in the park with joyful movements',
+      videoSrc: '/assets/video/samoyed_ball.mp4',
+      duration: '10s',
+      style: 'Realistic',
+      category: 'Nature',
+      views: '16.8k',
+      likes: '1.4k',
     },
     {
       id: 8,
-      title: 'Desert Dunes',
-      description: 'Endless sand dunes shifting in the wind under a starry night sky',
-      promptTitle: 'Desert Dunes',
-      promptText: 'Endless sand dunes shifting in the wind under a starry night sky',
-      thumbnail: 'desert',
+      title: 'Dog Love Story',
+      description: 'Heartwarming story of two dogs sharing love and friendship moments',
+      promptTitle: 'Dog Love Story',
+      promptText: 'Heartwarming story of two dogs sharing love and friendship moments',
+      videoSrc: '/assets/video/dog_love.mp4',
       duration: '12s',
-      style: 'Cinematic',
+      style: 'Emotional',
       category: 'Nature',
-      views: '7.8k',
-      likes: '589',
+      views: '22.3k',
+      likes: '2.0k',
     },
     {
       id: 9,
-      title: 'Underwater World',
-      description: 'Vibrant coral reef with tropical fish swimming in crystal clear water',
-      promptTitle: 'Underwater World',
-      promptText: 'Vibrant coral reef with tropical fish swimming in crystal clear water',
-      thumbnail: 'underwater',
-      duration: '18s',
-      style: 'Realistic',
+      title: 'Butterfly Wings',
+      description: 'Beautiful butterfly with intricate wing patterns fluttering gracefully',
+      promptTitle: 'Butterfly Wings',
+      promptText: 'Beautiful butterfly with intricate wing patterns fluttering gracefully',
+      videoSrc: '/assets/video/buter.mp4',
+      duration: '6s',
+      style: 'Nature',
       category: 'Nature',
-      views: '14.6k',
+      views: '14.2k',
       likes: '1.1k',
     },
   ];
@@ -280,14 +389,33 @@ export default function InspirationPage({ onGenerateWithPrompt }) {
 
   const categories = ['All', 'Urban', 'Nature', 'Art', 'Sci-Fi', 'Space'];
   
+  // Map image items to asset folder images - ensure NO duplicates
+  // Only items 1-9 are displayed, each gets a unique image
+  const getImageSrc = (item) => {
+    // Create unique mapping for items 1-9 (only these are displayed)
+    const imageMapping = {
+      1: '/assets/images/ai.png',
+      2: '/assets/images/beautiful_scenery.png',
+      3: '/assets/images/buter.png',
+      4: '/assets/images/butter_fly.png',
+      5: '/assets/images/coin.png',
+      6: '/assets/images/creative.jpg',
+      7: '/assets/images/plane.png',
+      8: '/assets/images/profesional_content.png',
+      9: '/assets/images/samoyed.png',
+    };
+    
+    return imageMapping[item.id] || '/assets/images/coin.png';
+  };
+  
   // Filter content based on selected category
   const filteredVideos = selectedCategory === 'All' 
     ? inspirationVideos 
     : inspirationVideos.filter(video => video.category === selectedCategory);
   
   const filteredImages = selectedCategory === 'All' 
-    ? inspirationImages 
-    : inspirationImages.filter(image => image.category === selectedCategory);
+    ? inspirationImages.slice(0, 9) // Only show first 9 images to avoid duplicates
+    : inspirationImages.filter(image => image.category === selectedCategory).slice(0, 9);
   
   const currentContent = contentType === 'videos' ? filteredVideos : filteredImages;
 
@@ -360,26 +488,66 @@ export default function InspirationPage({ onGenerateWithPrompt }) {
             className="group bg-gray-800/50 rounded-xl border border-gray-700 overflow-hidden hover:border-purple-500/50 transition-all hover:scale-[1.02] cursor-pointer"
           >
             {/* Thumbnail */}
-            <div className={`${contentType === 'videos' ? 'aspect-video' : 'aspect-square'} bg-gradient-to-br from-purple-500/20 via-blue-500/20 to-cyan-500/20 relative overflow-hidden`}>
+            <div className={`${contentType === 'videos' ? 'aspect-video' : 'aspect-square'} bg-gradient-to-br from-purple-500/20 via-blue-500/20 to-cyan-500/20 relative overflow-hidden group-hover:scale-105 transition-transform duration-300 cursor-pointer`}>
               {contentType === 'videos' ? (
                 <>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-16 h-16 gradient-purple-blue rounded-full flex items-center justify-center opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all">
-                      <svg className="w-8 h-8 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  {/* Video Background */}
+                  <video
+                    className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-300"
+                    src={item.videoSrc}
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                    onMouseEnter={(e) => {
+                      // Desktop: autoplay on hover
+                      if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+                        e.target.play().catch(() => {
+                          // Ignore autoplay errors
+                        });
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      // Desktop: pause on leave
+                      if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+                        e.target.pause();
+                      }
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      // Open modal or handle click
+                    }}
+                  />
+                  {/* Play overlay - Desktop only */}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 lg:opacity-0 lg:group-hover:opacity-100">
+                    <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      openVideoModal(item);
+                    }}
+                      className="w-12 h-12 gradient-purple-blue rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform cursor-pointer z-10 relative"
+                    >
+                      <svg className="w-6 h-6 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
                       </svg>
-                    </div>
+                    </button>
                   </div>
-                  <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 rounded text-xs text-white">
+                  <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 rounded text-xs text-white backdrop-blur-sm">
                     {item.duration}
                   </div>
                 </>
               ) : (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <svg className="w-12 h-12 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
+                <img
+                  src={getImageSrc(item)}
+                  alt={item.title}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  onError={(e) => {
+                    // Fallback to default image if specific image fails
+                    e.target.src = '/assets/images/coin.png';
+                  }}
+                />
               )}
               <div className="absolute top-2 left-2 px-2 py-1 bg-purple-500/80 rounded text-xs text-white font-medium">
                 {item.category}
@@ -388,37 +556,41 @@ export default function InspirationPage({ onGenerateWithPrompt }) {
 
             {/* Content */}
             <div className="p-4">
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="text-lg font-semibold text-white group-hover:text-purple-300 transition-colors flex-1">
-                  {item.title}
-                </h3>
-                <span className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded text-xs font-medium ml-2">
-                  {item.style}
-                </span>
-              </div>
+              {contentType === 'videos' ? (
+                <>
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-lg font-semibold text-white group-hover:text-purple-300 transition-colors flex-1">
+                      {item.title}
+                    </h3>
+                    <span className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded text-xs font-medium ml-2">
+                      {item.style}
+                    </span>
+                  </div>
 
-              {/* Prompt Text */}
-              <div className="mb-4">
-                <p className="text-xs text-gray-500 mb-1">Prompt</p>
-                <p className="text-sm text-gray-400 line-clamp-3">{item.promptText}</p>
-              </div>
-              
-              {/* Stats */}
-              <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
-                <div className="flex items-center gap-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                  <span>{item.views}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                  </svg>
-                  <span>{item.likes}</span>
-                </div>
-              </div>
+                  {/* Prompt Text */}
+                  <div className="mb-4">
+                    <p className="text-xs text-gray-500 mb-1">Prompt</p>
+                    <p className="text-sm text-gray-400 line-clamp-3">{item.promptText}</p>
+                  </div>
+                  
+                  {/* Stats */}
+                  <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
+                    <div className="flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      <span>{item.views}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                      </svg>
+                      <span>{item.likes}</span>
+                    </div>
+                  </div>
+                </>
+              ) : null}
 
               {/* Action Button */}
               <button
@@ -567,6 +739,15 @@ export default function InspirationPage({ onGenerateWithPrompt }) {
           ))}
         </div>
       </div>
+
+      {/* Video Modal */}
+      <VideoModal
+        isOpen={isVideoModalOpen}
+        onClose={closeVideoModal}
+        videoSrc={selectedVideo?.videoSrc}
+        title={selectedVideo?.title}
+        description={selectedVideo?.description}
+      />
     </div>
   );
 }

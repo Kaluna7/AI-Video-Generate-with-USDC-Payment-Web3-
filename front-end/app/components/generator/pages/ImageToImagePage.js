@@ -4,8 +4,15 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import ImagePreviewPanel from '../panels/ImagePreviewPanel';
 import { getImageJob } from '../../../lib/api';
+import { useAuthStore } from '../../../store/authStore';
+import { addImageHistoryItem, getImageHistory } from '../../../lib/imageHistory';
 
 export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
+  const user = useAuthStore((state) => state.user);
+  const walletAddress = useAuthStore((state) => state.walletAddress);
+  // Local history is stored per "account". Prefer app user id, fall back to connected wallet, else anonymous.
+  const historyUserId = user?.id || walletAddress || 'anonymous';
+
   // Scroll to top on mount
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -19,7 +26,7 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
   const fileInputRef = useRef(null);
   const fileInputRef2 = useRef(null);
   const [selectedMode, setSelectedMode] = useState('entire-image');
-  const [selectedModel, setSelectedModel] = useState('kling-v1');
+  const [selectedModel, setSelectedModel] = useState('ai-model');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -29,11 +36,11 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
   const [generationError, setGenerationError] = useState('');
   const [recentImages, setRecentImages] = useState([]);
 
-  // Load recent images from localStorage
+  // Load recent images from localStorage per user
   useEffect(() => {
     const loadRecentImages = () => {
       try {
-        const stored = JSON.parse(localStorage.getItem('generated_images') || '[]');
+        const stored = getImageHistory(historyUserId);
         // Filter for image-to-image type
         const i2iImages = stored.filter(img => img.type === 'image-to-image');
         const formatted = i2iImages.slice(0, 6).map((img) => ({
@@ -51,25 +58,35 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
 
     loadRecentImages();
     
+    // Listen for storage changes
     const handleStorageChange = () => {
       loadRecentImages();
     };
-    window.addEventListener('storage', handleStorageChange);
     
-    const interval = setInterval(loadRecentImages, 2000);
+    // Listen for custom event (same-tab updates)
+    const handleImageHistoryUpdated = () => {
+      loadRecentImages();
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleStorageChange);
+      window.addEventListener('primeStudio:imageHistoryUpdated', handleImageHistoryUpdated);
+    }
     
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', handleStorageChange);
+        window.removeEventListener('primeStudio:imageHistoryUpdated', handleImageHistoryUpdated);
+      }
     };
-  }, []);
+  }, [historyUserId]);
 
   const modes = [
     {
       id: 'entire-image',
       name: 'Entire Image',
       description: 'Transform the entire input image',
-      models: ['kling-v1'],
+      models: ['ai-standard'],
       aspectRatios: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16'],
       tokens: 2,
     },
@@ -77,7 +94,7 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
       id: 'subject',
       name: 'Subject',
       description: 'Focus on the subject of the image',
-      models: ['kling-v1-5'],
+      models: ['ai-enhanced'],
       aspectRatios: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'],
       tokens: 3,
     },
@@ -85,7 +102,7 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
       id: 'face',
       name: 'Face',
       description: 'Transform faces in the image',
-      models: ['kling-v1-5'],
+      models: ['ai-enhanced'],
       aspectRatios: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'],
       tokens: 3,
     },
@@ -93,7 +110,7 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
       id: 'restyle',
       name: 'Restyle',
       description: 'Apply new style to the image',
-      models: ['kling-v2', 'kling-v2-new'],
+      models: ['ai-advanced'],
       aspectRatios: ['auto'],
       tokens: 5,
     },
@@ -101,7 +118,7 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
       id: 'multi-image',
       name: 'Multi-Image',
       description: 'Combine multiple images',
-      models: ['kling-v2'],
+      models: ['ai-advanced'],
       aspectRatios: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'],
       tokens: 5,
     },
@@ -109,7 +126,7 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
       id: 'image-editing',
       name: 'Image Editing',
       description: 'Edit and enhance images',
-      models: ['kling-image-o1'],
+      models: ['ai-editing'],
       aspectRatios: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'],
       tokens: 1,
     },
@@ -250,7 +267,7 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
             setIsGenerating(false);
             clearInterval(interval);
             
-            // Save to localStorage
+            // Save to localStorage per user
             try {
               const imageData = {
                 id: Date.now().toString(),
@@ -262,13 +279,13 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
                 mode: selectedMode,
                 aspectRatio: aspectRatio,
               };
-              const existing = JSON.parse(localStorage.getItem('generated_images') || '[]');
-              existing.unshift(imageData);
-              const updated = existing.slice(0, 100);
-              localStorage.setItem('generated_images', JSON.stringify(updated));
               
-              // Update recent images state
-              const i2iImages = updated.filter(img => img.type === 'image-to-image');
+              // Save to per-user history
+              addImageHistoryItem(historyUserId, imageData);
+              
+              // Update recent images state from current user's history
+              const userHistory = getImageHistory(historyUserId);
+              const i2iImages = userHistory.filter(img => img.type === 'image-to-image');
               const formatted = i2iImages.slice(0, 6).map((img) => ({
                 id: img.id,
                 imageUrl: img.url,
@@ -508,11 +525,10 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
                               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                           }`}
                         >
-                          {modelId === 'kling-v1' ? 'Kling V1' :
-                           modelId === 'kling-v1-5' ? 'Kling V1.5' :
-                           modelId === 'kling-v2' ? 'Kling V2' :
-                           modelId === 'kling-v2-new' ? 'Kling V2 New' :
-                           modelId === 'kling-image-o1' ? 'Kling Image O1' : modelId}
+                          {modelId === 'ai-standard' ? 'AI Standard' :
+                           modelId === 'ai-enhanced' ? 'AI Enhanced' :
+                           modelId === 'ai-advanced' ? 'AI Advanced' :
+                           modelId === 'ai-editing' ? 'AI Editing' : modelId}
                         </button>
                       ))}
                     </div>
@@ -825,7 +841,7 @@ export default function ImageToImagePage({ onGenerate, onNavigateToMyImages }) {
             {/* Background Image */}
             <div className="absolute inset-0">
               <Image
-                src="/assets/images/ai.png"
+                src="/assets/images/plane.png"
                 alt="AI Image Transformation"
                 fill
                 className="object-cover"

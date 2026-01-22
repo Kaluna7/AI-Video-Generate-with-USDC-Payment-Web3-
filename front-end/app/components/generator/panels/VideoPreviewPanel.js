@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
+import { addTokenToVideoUrl } from '../../../lib/api';
 
 export default function VideoPreviewPanel({
   generationStatus,
@@ -11,6 +12,15 @@ export default function VideoPreviewPanel({
 }) {
   const videoThumbRefs = useRef({});
   const [playingThumbId, setPlayingThumbId] = useState(null);
+
+  // Debug: log videoUrl and status
+  useEffect(() => {
+    if (videoUrl) {
+      console.log('[VideoPreviewPanel] videoUrl:', videoUrl);
+      console.log('[VideoPreviewPanel] generationStatus:', generationStatus);
+      console.log('[VideoPreviewPanel] videoUrl with token:', addTokenToVideoUrl(videoUrl));
+    }
+  }, [videoUrl, generationStatus]);
 
   const steps = [
     { id: 'waiting', label: 'Waiting', icon: '⏱️' },
@@ -58,12 +68,32 @@ export default function VideoPreviewPanel({
         
         <div className="aspect-video bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg border border-gray-700 flex items-center justify-center relative overflow-hidden">
           {generationStatus === 'ready' && videoUrl ? (
-            <video
-              className="absolute inset-0 w-full h-full object-cover"
-              src={videoUrl}
-              controls
-              playsInline
-            />
+            <>
+              <video
+                className="absolute inset-0 w-full h-full object-contain"
+                src={addTokenToVideoUrl(videoUrl)}
+                controls
+                playsInline
+                preload="metadata"
+                onError={(e) => {
+                  console.error('Video load error:', e);
+                  console.error('Video URL:', addTokenToVideoUrl(videoUrl));
+                  console.error('Video element:', e.target);
+                  // Try to get more error details
+                  const videoEl = e.target;
+                  if (videoEl) {
+                    console.error('Video error code:', videoEl.error?.code);
+                    console.error('Video error message:', videoEl.error?.message);
+                  }
+                }}
+                onLoadStart={() => {
+                  console.log('Video loading started:', addTokenToVideoUrl(videoUrl));
+                }}
+                onCanPlay={() => {
+                  console.log('Video can play');
+                }}
+              />
+            </>
           ) : (
             <div className="text-center z-10">
               <div className="w-12 h-12 gradient-purple-blue rounded-full flex items-center justify-center mx-auto mb-3 opacity-40">
@@ -77,6 +107,11 @@ export default function VideoPreviewPanel({
               <p className="text-xs text-gray-600 mt-1">
                 {errorMessage ? errorMessage : 'Configure & generate'}
               </p>
+              {videoUrl && generationStatus !== 'ready' && (
+                <p className="text-xs text-yellow-500 mt-1">
+                  Video URL exists but status is not ready: {generationStatus}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -164,7 +199,7 @@ export default function VideoPreviewPanel({
                 {gen.videoUrl ? (
                   <video
                     className="absolute inset-0 w-full h-full object-cover"
-                    src={gen.videoUrl}
+                    src={addTokenToVideoUrl(gen.videoUrl)}
                     ref={(el) => {
                       if (el) videoThumbRefs.current[gen.id] = el;
                     }}

@@ -1,7 +1,29 @@
 'use client';
 
-// Gunakan localhost agar konsisten dengan URL di browser
-const API_BASE_URL = 'http://localhost:8001';
+// Determine API base URL dynamically
+// Use environment variable if set, otherwise detect from current hostname
+const getApiBaseUrl = () => {
+  // Check for environment variable (for Next.js, use NEXT_PUBLIC_ prefix)
+  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  
+  // If running in browser, use same hostname as frontend
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    // If accessing via localhost or 127.0.0.1, use localhost for backend
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:8001';
+    }
+    // Otherwise, use same hostname with backend port
+    return `http://${hostname}:8001`;
+  }
+  
+  // Default fallback
+  return 'http://localhost:8001';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Cookie helper functions
 const setCookie = (name, value, days = 1) => {
@@ -83,7 +105,7 @@ export const registerUser = async (data) => {
     return await handleResponse(response);
   } catch (error) {
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Server Error. Please reload the page and try again.`);
     }
     throw error;
   }
@@ -115,7 +137,7 @@ export const loginUser = async (data) => {
     return result;
   } catch (error) {
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Server Error. Please reload the page and try again.`);
     }
     throw error;
   }
@@ -123,21 +145,40 @@ export const loginUser = async (data) => {
 
 // Forgot Password
 export const forgotPassword = async (data) => {
+  console.log('🚀 forgotPassword called with:', data);
+  console.log('📡 API_BASE_URL:', API_BASE_URL);
+
   try {
-    const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+    const url = `${API_BASE_URL}/auth/forgot-password`;
+    console.log('🔗 Full URL:', url);
+
+    const requestBody = JSON.stringify({
+      email: data.email,
+    });
+    console.log('📦 Request body:', requestBody);
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
-      body: JSON.stringify({
-        email: data.email,
-      }),
+      body: requestBody,
     });
+
+    console.log('📥 Response status:', response.status);
+    console.log('📥 Response headers:', Object.fromEntries(response.headers.entries()));
 
     return await handleResponse(response);
   } catch (error) {
+    console.error('❌ Network error details:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack
+    });
+
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Cannot connect to server at ${API_BASE_URL}. Please check if the backend server is running on port 8001.`);
     }
     throw error;
   }
@@ -160,7 +201,7 @@ export const resetPassword = async (data) => {
     return await handleResponse(response);
   } catch (error) {
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Server Error. Please reload the page and try again.`);
     }
     throw error;
   }
@@ -181,7 +222,7 @@ export const getCoinBalance = async () => {
     return await handleResponse(response);
   } catch (error) {
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Server Error. Please reload the page and try again.`);
     }
     throw error;
   }
@@ -200,7 +241,7 @@ export const claimTopUp = async ({ tx_hash }) => {
     return await handleResponse(response);
   } catch (error) {
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Server Error. Please reload the page and try again.`);
     }
     throw error;
   }
@@ -226,7 +267,7 @@ export const enhancePrompt = async ({ idea, existing_prompt }) => {
     return await handleResponse(response);
   } catch (error) {
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Server Error. Please reload the page and try again.`);
     }
     throw error;
   }
@@ -242,6 +283,38 @@ const getAuthHeaders = () => {
     ? (getCookie('access_token') || localStorage.getItem('access_token'))
     : null;
   return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+export const getAuthToken = () => {
+  // Try cookie first, then fallback to localStorage
+  return typeof window !== 'undefined' 
+    ? (getCookie('access_token') || localStorage.getItem('access_token'))
+    : null;
+};
+
+/**
+ * Add authentication token to video URL for download endpoints.
+ * This is needed because video tags cannot send Authorization headers.
+ */
+export const addTokenToVideoUrl = (url) => {
+  if (!url) return url;
+  const token = getAuthToken();
+  if (!token) return url;
+  
+  // Check if token is already in the URL
+  try {
+    const urlObj = new URL(url);
+    if (urlObj.searchParams.has('token')) {
+      // Token already exists, return as is
+      return url;
+    }
+  } catch {
+    // If URL parsing fails, continue with string manipulation
+  }
+  
+  // Check if URL already has query parameters
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}token=${encodeURIComponent(token)}`;
 };
 
 export const createTextToVideoJob = async ({
@@ -279,7 +352,7 @@ export const createTextToVideoJob = async ({
     return await handleResponse(response);
   } catch (error) {
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Server Error. Please reload the page and try again.`);
     }
     throw error;
   }
@@ -296,7 +369,7 @@ export const getVideoJob = async (jobId) => {
     return await handleResponse(response);
   } catch (error) {
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Server Error. Please reload the page and try again.`);
     }
     throw error;
   }
@@ -327,7 +400,7 @@ export const createTextToImageJob = async ({
     return await handleResponse(response);
   } catch (error) {
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Server Error. Please reload the page and try again.`);
     }
     throw error;
   }
@@ -360,7 +433,7 @@ export const createImageToImageJob = async ({
     return await handleResponse(response);
   } catch (error) {
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Server Error. Please reload the page and try again.`);
     }
     throw error;
   }
@@ -377,7 +450,7 @@ export const getImageJob = async (jobId) => {
     return await handleResponse(response);
   } catch (error) {
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.name === 'TypeError') {
-      throw new Error(`Cannot connect to backend server. Please make sure the backend is running on ${API_BASE_URL}`);
+      throw new Error(`Server Error. Please reload the page and try again.`);
     }
     throw error;
   }

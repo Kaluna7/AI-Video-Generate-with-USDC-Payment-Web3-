@@ -3,7 +3,7 @@
 import { z } from 'zod';
 
 export const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().email('Please enter a valid email address (e.g., example@gmail.com)'),
   password: z
     .string()
     .min(6, 'Password must be at least 6 characters')
@@ -11,7 +11,7 @@ export const loginSchema = z.object({
 });
 
 export const registerSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().email('Please enter a valid email address (e.g., example@gmail.com)'),
   full_name: z.string().min(2, 'Full name must be at least 2 characters'),
   password: z
     .string()
@@ -24,7 +24,7 @@ export const registerSchema = z.object({
 });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().email('Please enter a valid email address (e.g., example@gmail.com)'),
 });
 
 export const resetPasswordSchema = z.object({

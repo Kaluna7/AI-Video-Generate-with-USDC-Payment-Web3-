@@ -4,14 +4,28 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import ImagePreviewPanel from '../panels/ImagePreviewPanel';
 import { getImageJob } from '../../../lib/api';
+import { useAuthStore } from '../../../store/authStore';
+import { addImageHistoryItem, getImageHistory } from '../../../lib/imageHistory';
 
-export default function TextToImagePage({ onGenerate, onNavigateToMyImages }) {
+export default function TextToImagePage({ onGenerate, onNavigateToMyImages, initialPrompt = '' }) {
+  const user = useAuthStore((state) => state.user);
+  const walletAddress = useAuthStore((state) => state.walletAddress);
+  // Local history is stored per "account". Prefer app user id, fall back to connected wallet, else anonymous.
+  const historyUserId = user?.id || walletAddress || 'anonymous';
+
   // Scroll to top on mount
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
-  const [prompt, setPrompt] = useState('');
-  const [selectedModel, setSelectedModel] = useState('kling-image-o1');
+  const [prompt, setPrompt] = useState(initialPrompt);
+
+  // Update prompt when initialPrompt changes (e.g., when navigating from Inspiration page)
+  useEffect(() => {
+    if (initialPrompt) {
+      setPrompt(initialPrompt);
+    }
+  }, [initialPrompt]);
+  const [selectedModel, setSelectedModel] = useState('ai-image');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -21,11 +35,11 @@ export default function TextToImagePage({ onGenerate, onNavigateToMyImages }) {
   const [generationError, setGenerationError] = useState('');
   const [recentImages, setRecentImages] = useState([]);
 
-  // Load recent images from localStorage
+  // Load recent images from localStorage per user
   useEffect(() => {
     const loadRecentImages = () => {
       try {
-        const stored = JSON.parse(localStorage.getItem('generated_images') || '[]');
+        const stored = getImageHistory(historyUserId);
         // Format for ImagePreviewPanel
         const formatted = stored.slice(0, 6).map((img) => ({
           id: img.id,
@@ -42,53 +56,61 @@ export default function TextToImagePage({ onGenerate, onNavigateToMyImages }) {
 
     loadRecentImages();
     
-    // Listen for storage changes (when new images are saved)
+    // Listen for storage changes
     const handleStorageChange = () => {
       loadRecentImages();
     };
-    window.addEventListener('storage', handleStorageChange);
     
-    // Also check periodically in case storage event doesn't fire (same window)
-    const interval = setInterval(loadRecentImages, 2000);
+    // Listen for custom event (same-tab updates)
+    const handleImageHistoryUpdated = () => {
+      loadRecentImages();
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleStorageChange);
+      window.addEventListener('primeStudio:imageHistoryUpdated', handleImageHistoryUpdated);
+    }
     
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', handleStorageChange);
+        window.removeEventListener('primeStudio:imageHistoryUpdated', handleImageHistoryUpdated);
+      }
     };
-  }, []);
+  }, [historyUserId]);
 
   const models = [
     {
-      id: 'kling-image-o1',
-      name: 'Kling Image O1',
+      id: 'ai-image',
+      name: 'AI Image Generator',
       description: 'Premium text to image with editing capabilities',
       tokens: 1,
       aspectRatios: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'],
     },
     {
-      id: 'kling-v1',
-      name: 'Kling V1',
+      id: 'ai-standard',
+      name: 'AI Standard',
       description: 'Basic text to image generation',
       tokens: 2,
       aspectRatios: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16'],
     },
     {
-      id: 'kling-v1-5',
-      name: 'Kling V1.5',
+      id: 'ai-enhanced',
+      name: 'AI Enhanced',
       description: 'Enhanced text to image with better quality',
       tokens: 3,
       aspectRatios: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'],
     },
     {
-      id: 'kling-v2',
-      name: 'Kling V2',
+      id: 'ai-advanced',
+      name: 'AI Advanced',
       description: 'Advanced text to image generation',
       tokens: 5,
       aspectRatios: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'],
     },
     {
-      id: 'kling-v2-1',
-      name: 'Kling V2.1',
+      id: 'ai-premium',
+      name: 'AI Premium',
       description: 'High quality text to image generation',
       tokens: 6,
       aspectRatios: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'],
@@ -156,7 +178,7 @@ export default function TextToImagePage({ onGenerate, onNavigateToMyImages }) {
             setIsGenerating(false);
             clearInterval(interval);
             
-            // Save to localStorage
+            // Save to localStorage per user
             try {
               const imageData = {
                 id: Date.now().toString(),
@@ -167,14 +189,13 @@ export default function TextToImagePage({ onGenerate, onNavigateToMyImages }) {
                 model: selectedModel,
                 aspectRatio: aspectRatio,
               };
-              const existing = JSON.parse(localStorage.getItem('generated_images') || '[]');
-              existing.unshift(imageData);
-              // Keep only last 100 images
-              const updated = existing.slice(0, 100);
-              localStorage.setItem('generated_images', JSON.stringify(updated));
               
-              // Update recent images state
-              const formatted = updated.slice(0, 6).map((img) => ({
+              // Save to per-user history
+              addImageHistoryItem(historyUserId, imageData);
+              
+              // Update recent images state from current user's history
+              const userHistory = getImageHistory(historyUserId);
+              const formatted = userHistory.slice(0, 6).map((img) => ({
                 id: img.id,
                 imageUrl: img.url,
                 title: img.prompt?.slice(0, 30) || 'Generated Image',
@@ -657,7 +678,7 @@ export default function TextToImagePage({ onGenerate, onNavigateToMyImages }) {
             },
             {
               question: 'Can I edit or modify generated images?',
-              answer: 'Yes! Some models like Kling Image O1 support editing capabilities. You can regenerate with modified prompts or use the generated image as a base for further creative work.',
+              answer: 'Yes! Our AI Image Generator supports editing capabilities. You can regenerate with modified prompts or use the generated image as a base for further creative work.',
             },
             {
               question: 'What aspect ratios are available?',

@@ -28,7 +28,17 @@ export const saveVideoHistory = (userId, items) => {
 
 export const addVideoHistoryItem = (userId, item) => {
   const existing = getVideoHistory(userId);
-  const next = [item, ...existing].filter(Boolean);
+  
+  // Add expiry date (2 days from creation) if not already set
+  const now = Date.now();
+  const twoDaysInMs = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
+  const videoItem = {
+    ...item,
+    createdAt: item.createdAt || now,
+    expiresAt: item.expiresAt || (item.createdAt || now) + twoDaysInMs,
+  };
+  
+  const next = [videoItem, ...existing].filter(Boolean);
 
   // Deduplicate by jobId or videoUrl when available
   const seen = new Set();
@@ -44,9 +54,27 @@ export const addVideoHistoryItem = (userId, item) => {
     deduped.push(v);
   }
 
+  // Remove expired videos before saving
+  const nowForFilter = Date.now();
+  const activeVideos = deduped.filter(v => {
+    if (!v.expiresAt) return true; // Keep videos without expiry (backward compatibility)
+    return v.expiresAt > nowForFilter;
+  });
+
   // Cap to avoid bloating localStorage
-  saveVideoHistory(userId, deduped.slice(0, 50));
-  return deduped;
+  saveVideoHistory(userId, activeVideos.slice(0, 50));
+  return activeVideos;
+};
+
+export const deleteVideoHistoryItem = (userId, videoId) => {
+  if (typeof window === 'undefined') return;
+  const existing = getVideoHistory(userId);
+  const filtered = existing.filter((v) => {
+    // Match by id, jobId, or videoUrl
+    return v.id !== videoId && v.jobId !== videoId && (v.videoUrl || '').indexOf(videoId) === -1;
+  });
+  saveVideoHistory(userId, filtered);
+  return filtered;
 };
 
 export const formatRelativeTime = (ts) => {
@@ -60,6 +88,45 @@ export const formatRelativeTime = (ts) => {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   return `${day}d ago`;
+};
+
+/**
+ * Clean up expired videos from history
+ * Videos expire after 2 days
+ */
+export const cleanupExpiredVideos = (userId) => {
+  if (typeof window === 'undefined') return;
+  const existing = getVideoHistory(userId);
+  const now = Date.now();
+  const activeVideos = existing.filter(v => {
+    if (!v.expiresAt) return true; // Keep videos without expiry (backward compatibility)
+    return v.expiresAt > now;
+  });
+  
+  if (activeVideos.length !== existing.length) {
+    saveVideoHistory(userId, activeVideos);
+  }
+  return activeVideos;
+};
+
+/**
+ * Check if a video is expired
+ */
+export const isVideoExpired = (video) => {
+  if (!video || !video.expiresAt) return false;
+  return Date.now() > video.expiresAt;
+};
+
+/**
+ * Get remaining days until video expires
+ */
+export const getDaysUntilExpiry = (video) => {
+  if (!video || !video.expiresAt) return null;
+  const now = Date.now();
+  const diffMs = video.expiresAt - now;
+  if (diffMs <= 0) return 0;
+  const days = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+  return days;
 };
 
 

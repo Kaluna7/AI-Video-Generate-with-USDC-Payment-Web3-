@@ -69,14 +69,37 @@ export default function ImagePreviewPanel({
           <h2 className="text-xs font-semibold text-white">Image Preview</h2>
           {generationStatus === 'ready' && imageUrl && (
             <div className="flex gap-1.5">
-              <button 
-                onClick={() => {
-                  const link = document.createElement('a');
-                  link.href = imageUrl;
-                  link.download = `generated-image-${Date.now()}.jpg`;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
+              <button
+                onClick={async () => {
+                  try {
+                    // Fetch the image as blob to handle CORS issues
+                    const response = await fetch(imageUrl);
+                    const blob = await response.blob();
+
+                    // Create object URL for the blob
+                    const blobUrl = URL.createObjectURL(blob);
+
+                    // Create download link
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = `generated-image-${Date.now()}.jpg`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    // Clean up the object URL
+                    URL.revokeObjectURL(blobUrl);
+                  } catch (error) {
+                    console.error('Download failed:', error);
+                    // Fallback to direct download (may not work with CORS)
+                    const link = document.createElement('a');
+                    link.href = imageUrl;
+                    link.download = `generated-image-${Date.now()}.jpg`;
+                    link.target = '_blank';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }
                 }}
                 className="p-1 text-gray-400 hover:text-white transition-colors" 
                 title="Download"

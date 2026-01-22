@@ -1,21 +1,36 @@
 import os
+import base64
+import io
+import tempfile
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from uuid import uuid4
 
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+    print("[Sora2] PIL/Pillow is available. Image resizing enabled.")
+except ImportError:
+    PIL_AVAILABLE = False
+    print("[Sora2] WARNING: PIL/Pillow not available. Image resizing will be skipped.")
+    print("[Sora2] Please install Pillow: pip install Pillow>=10.0.0")
+
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import Column, Integer, String, DateTime, create_engine
+from sqlalchemy import Column, Integer, String, DateTime, Text, create_engine, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 import requests
 from urllib.parse import urlencode
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 try:
     from dotenv import load_dotenv
@@ -39,9 +54,9 @@ if not DATABASE_URL:
             "DATABASE_URL is not set and python-dotenv is missing. "
             "Install it (pip install python-dotenv) or set DATABASE_URL in OS env vars."
         )
-    raise RuntimeError(
-        "DATABASE_URL is not set. Add it to back-end/.env or project-root/.env."
-    )
+    # Default to SQLite for development
+    DATABASE_URL = "sqlite:///./dev.db"
+    print(f"[DB] Using default SQLite database: {DATABASE_URL}")
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -93,6 +108,183 @@ def create_reset_token(email: str) -> str:
     expire = datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
     to_encode = {"sub": email, "exp": expire, "type": "password_reset"}
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def generate_reset_code() -> str:
+    """Generate a 6-digit numeric reset code"""
+    import random
+    return ''.join([str(random.randint(0, 9)) for _ in range(6)])
+
+
+def send_reset_code_email(to_email: str, reset_code: str):
+    """
+    Send reset code via email.
+    Supports multiple email services for development and production.
+    """
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    # Try different email configurations
+    email_configs = []
+
+    # 1. Check for Mailtrap API
+    mailtrap_api_token = os.getenv("MAILTRAP_API_TOKEN")
+    if mailtrap_api_token:
+        email_configs.append({
+            'type': 'mailtrap',
+            'api_token': mailtrap_api_token,
+            'from_email': os.getenv("FROM_EMAIL", "noreply@primestudio.ai")
+        })
+
+    # 2. Check for SendGrid API
+    sendgrid_key = os.getenv("SENDGRID_API_KEY")
+    if sendgrid_key:
+        email_configs.append({
+            'type': 'sendgrid',
+            'api_key': sendgrid_key,
+            'from_email': os.getenv("FROM_EMAIL", "noreply@primestudio.ai")
+        })
+
+    # 3. Check for SMTP configuration (works with Mailtrap SMTP too)
+    smtp_server = os.getenv("SMTP_SERVER")
+    smtp_port = os.getenv("SMTP_PORT", "587")
+    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+
+    if smtp_server and smtp_username and smtp_password:
+        email_configs.append({
+            'type': 'smtp',
+            'server': smtp_server,
+            'port': int(smtp_port),
+            'username': smtp_username,
+            'password': smtp_password,
+            'from_email': os.getenv("FROM_EMAIL", smtp_username)
+        })
+
+    # 4. Fallback: Console logging for development
+    if not email_configs:
+        print(f"[EMAIL] No email configuration found. Reset code for {to_email}: {reset_code}")
+        print(f"[EMAIL] To enable email sending, configure one of:")
+        print(f"[EMAIL] 1. Mailtrap: Set MAILTRAP_API_TOKEN and FROM_EMAIL in .env")
+        print(f"[EMAIL] 2. SendGrid: Set SENDGRID_API_KEY and FROM_EMAIL in .env")
+        print(f"[EMAIL] 3. SMTP: Set SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD in .env")
+        return
+
+    # Try each email configuration
+    for config in email_configs:
+        try:
+            if config['type'] == 'mailtrap':
+                send_via_mailtrap(config, to_email, reset_code)
+                print(f"[EMAIL] Reset code sent via Mailtrap to {to_email}")
+                return
+
+            elif config['type'] == 'sendgrid':
+                send_via_sendgrid(config, to_email, reset_code)
+                print(f"[EMAIL] Reset code sent via SendGrid to {to_email}")
+                return
+
+            elif config['type'] == 'smtp':
+                send_via_smtp(config, to_email, reset_code)
+                print(f"[EMAIL] Reset code sent via SMTP to {to_email}")
+                return
+
+        except Exception as e:
+            print(f"[EMAIL] Failed to send via {config['type']}: {e}")
+            continue
+
+    # If all methods fail, fall back to console
+    print(f"[EMAIL] All email methods failed. Reset code for {to_email}: {reset_code}")
+
+
+def send_via_mailtrap(config: dict, to_email: str, reset_code: str):
+    """Send email via Mailtrap API"""
+    import requests
+
+    # Mailtrap API endpoint - sesuai dokumentasi
+    url = "https://sandbox.api.mailtrap.io/api/send"
+
+    headers = {
+        "Authorization": f"Bearer {config['api_token']}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "to": [{"email": to_email}],
+        "from": {"email": config['from_email'], "name": "PrimeStudio"},
+        "subject": "PrimeStudio Password Reset Code",
+        "text": f"""Hello,
+
+Your password reset code is: {reset_code}
+
+This code will expire in 15 minutes.
+
+If you didn't request this password reset, please ignore this email.
+
+Best regards,
+PrimeStudio Team
+""",
+        "category": "password-reset"
+    }
+
+    response = requests.post(url, headers=headers, json=data, timeout=30)
+    response.raise_for_status()
+
+
+def send_via_sendgrid(config: dict, to_email: str, reset_code: str):
+    """Send email via SendGrid API"""
+    import requests
+
+    url = "https://api.sendgrid.com/v3/mail/send"
+    headers = {
+        "Authorization": f"Bearer {config['api_key']}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "personalizations": [{
+            "to": [{"email": to_email}],
+            "subject": "PrimeStudio Password Reset Code"
+        }],
+        "from": {"email": config['from_email']},
+        "content": [{
+            "type": "text/plain",
+            "value": f"Your password reset code is: {reset_code}\n\nThis code will expire in 15 minutes."
+        }]
+    }
+
+    response = requests.post(url, headers=headers, json=data, timeout=30)
+    response.raise_for_status()
+
+
+def send_via_smtp(config: dict, to_email: str, reset_code: str):
+    """Send email via SMTP"""
+    msg = MIMEMultipart()
+    msg['From'] = config['from_email']
+    msg['To'] = to_email
+    msg['Subject'] = "PrimeStudio Password Reset Code"
+
+    body = f"""
+Hello,
+
+Your password reset code is: {reset_code}
+
+This code will expire in 15 minutes.
+
+If you didn't request this password reset, please ignore this email.
+
+Best regards,
+PrimeStudio Team
+    """
+
+    msg.attach(MIMEText(body, 'plain'))
+
+    server = smtplib.SMTP(config['server'], config['port'])
+    server.starttls()
+    server.login(config['username'], config['password'])
+    text = msg.as_string()
+    server.sendmail(config['from_email'], to_email, text)
+    server.quit()
 
 
 def verify_reset_token(token: str) -> str:
@@ -439,6 +631,8 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     reset_token = Column(String, nullable=True)
     reset_token_expires_at = Column(DateTime, nullable=True)
+    reset_code = Column(String, nullable=True)
+    reset_code_expires_at = Column(DateTime, nullable=True)
 
 
 class UserCoinBalance(Base):
@@ -460,7 +654,26 @@ class CoinTopUpTx(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-Base.metadata.create_all(bind=engine)
+class StoredVideo(Base):
+    __tablename__ = "stored_videos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    provider_task_id = Column(String, index=True, nullable=False)  # OpenAI video ID
+    job_id = Column(String, index=True, nullable=True)  # Our internal job ID
+    file_path = Column(String, nullable=False)  # Path to stored video file
+    file_size = Column(Integer, nullable=True)  # File size in bytes
+    expires_at = Column(DateTime, nullable=False, index=True)  # Auto-delete after 2 days
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+# Create tables if they don't exist (safe to call multiple times)
+print("[DB] Creating tables if they don't exist...")
+try:
+    Base.metadata.create_all(bind=engine)
+    print("[DB] Tables ready")
+except Exception as e:
+    print(f"[DB] Error creating tables: {e}")
 
 
 # ==============================
@@ -492,6 +705,17 @@ class Token(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+
+class VerifyResetCodeRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class ResetPasswordWithCodeRequest(BaseModel):
+    email: EmailStr
+    code: str
+    password: str
 
 
 class ResetPasswordRequest(BaseModel):
@@ -589,6 +813,37 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
         user_id = int(sub)
     except JWTError as e:
         # More specific error messages for debugging
+        error_msg = str(e)
+        if "expired" in error_msg.lower():
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired. Please login again.")
+        elif "invalid" in error_msg.lower():
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token. Please login again.")
+        else:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Token validation failed: {error_msg}")
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: user ID format error")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    return user
+
+
+def get_user_from_token(token: str, db: Session) -> User:
+    """
+    Helper function to validate token and return user.
+    Used for token validation from query parameters.
+    """
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No token provided")
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        sub = payload.get("sub")
+        if not sub:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token: missing user ID")
+        user_id = int(sub)
+    except JWTError as e:
         error_msg = str(e)
         if "expired" in error_msg.lower():
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired. Please login again.")
@@ -1024,6 +1279,9 @@ def _sora2_create_task(
     }
     size = size_mapping.get(aspect_ratio.lower(), "720x1280")
     
+    # Parse width and height from size string (e.g., "1280x720")
+    target_width, target_height = map(int, size.split('x'))
+    
     # Map quality to model (sora-2 or sora-2-pro)
     model = "sora-2-pro" if quality.lower() == "hd" else "sora-2"
     
@@ -1041,11 +1299,6 @@ def _sora2_create_task(
     else:
         seconds = "4"  # Default per OpenAI docs
     
-    # Prepare JSON payload for OpenAI
-    # OpenAI accepts both application/json and multipart/form-data
-    # Since we don't have file uploads (input_reference), we'll use application/json
-    # This is simpler and cleaner than multipart/form-data
-    
     url = f"{_sora2_base_url()}{_sora2_create_path()}"
     headers = _sora2_headers()
     
@@ -1053,26 +1306,207 @@ def _sora2_create_task(
     request_id = str(uuid4())
     headers["X-Client-Request-Id"] = request_id
     
-    # Set Content-Type to application/json
-    headers["Content-Type"] = "application/json"
-    
-    # Prepare JSON payload
-    json_payload = {
-        "prompt": prompt,
-        "model": model,
-        "seconds": seconds,
-        "size": size,
-    }
-    
     # Handle input_reference (image file) if image_urls provided
-    # Note: OpenAI expects a file upload, not URL
-    # For now, we'll skip this if only URLs are provided
-    # In production, you might want to download the image first and then upload
-    # TODO: Implement image file download and upload for input_reference
+    image_file = None
+    temp_file_path = None
     
-    # Make the request with JSON payload
-    resp = requests.post(url, headers=headers, json=json_payload, timeout=90)
+    if image_urls and len(image_urls) > 0:
+        image_url = image_urls[0]  # Use first image
+        
+        try:
+            image_data = None
+            original_format = 'PNG'
+            
+            # Check if it's a base64 data URL
+            if image_url.startswith('data:image/'):
+                # Extract base64 data
+                # Format: data:image/png;base64,<base64_data>
+                header, encoded = image_url.split(',', 1)
+                image_data = base64.b64decode(encoded)
+                
+                # Determine file extension from MIME type
+                mime_type = header.split(';')[0].split('/')[1] if '/' in header else 'png'
+                ext_map = {
+                    'png': ('.png', 'PNG'),
+                    'jpeg': ('.jpg', 'JPEG'),
+                    'jpg': ('.jpg', 'JPEG'),
+                    'gif': ('.gif', 'GIF'),
+                    'webp': ('.webp', 'WEBP')
+                }
+                suffix, original_format = ext_map.get(mime_type.lower(), ('.png', 'PNG'))
+                    
+            elif image_url.startswith('http://') or image_url.startswith('https://'):
+                # Download image from URL
+                img_resp = requests.get(image_url, timeout=30)
+                img_resp.raise_for_status()
+                image_data = img_resp.content
+                # Try to detect format from Content-Type or file extension
+                content_type = img_resp.headers.get('Content-Type', '')
+                if 'jpeg' in content_type or 'jpg' in content_type:
+                    original_format = 'JPEG'
+                elif 'png' in content_type:
+                    original_format = 'PNG'
+                elif 'webp' in content_type:
+                    original_format = 'WEBP'
+                suffix = '.png'
+            else:
+                # Assume it's a file path (for local development)
+                if os.path.exists(image_url):
+                    with open(image_url, 'rb') as f:
+                        image_data = f.read()
+                    # Detect format from file extension
+                    ext = os.path.splitext(image_url)[1].lower()
+                    if ext in ['.jpg', '.jpeg']:
+                        original_format = 'JPEG'
+                    elif ext == '.png':
+                        original_format = 'PNG'
+                    elif ext == '.webp':
+                        original_format = 'WEBP'
+                    suffix = ext or '.png'
+            
+            # Resize image to match target size if PIL is available
+            if image_data:
+                if PIL_AVAILABLE:
+                    try:
+                        # Open image from bytes
+                        img = Image.open(io.BytesIO(image_data))
+                        
+                        # Resize image to match target dimensions exactly
+                        # OpenAI requires exact dimensions matching the video size
+                        original_size = img.size
+                        print(f"[Sora2] Original image size: {original_size[0]}x{original_size[1]}, target: {target_width}x{target_height}")
+                        
+                        # Only resize if dimensions don't match
+                        if original_size != (target_width, target_height):
+                            img_resized = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                            
+                            # Save resized image to bytes
+                            output = io.BytesIO()
+                            # Use PNG format for better compatibility
+                            img_resized.save(output, format='PNG')
+                            image_data = output.getvalue()
+                            original_format = 'PNG'
+                            suffix = '.png'
+                            print(f"[Sora2] Image successfully resized to {target_width}x{target_height}")
+                        else:
+                            print(f"[Sora2] Image already matches target size {target_width}x{target_height}, no resize needed")
+                    except Exception as resize_error:
+                        print(f"[Sora2] Error: Failed to resize image: {resize_error}")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Failed to process image for video generation. Image must be {target_width}x{target_height} pixels. Error: {str(resize_error)}"
+                        )
+                else:
+                    # PIL not available, warn user that image must match size
+                    print(f"[Sora2] Warning: PIL not available. Image must be exactly {target_width}x{target_height} pixels.")
+                    # We'll still try to upload, but OpenAI will reject if size doesn't match
+            
+            # Create temporary file with processed image
+            if image_data:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                    tmp_file.write(image_data)
+                    temp_file_path = tmp_file.name
+                    image_file = open(temp_file_path, 'rb')
+                    
+        except Exception as e:
+            print(f"[Sora2] Error processing image: {e}")
+            # Continue without image if processing fails
+            if image_file:
+                image_file.close()
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            image_file = None
     
+    # If we have an image file, use multipart/form-data
+    if image_file:
+        try:
+            # Verify image dimensions before upload (if PIL available)
+            if PIL_AVAILABLE and temp_file_path:
+                try:
+                    # Re-open and verify dimensions
+                    verify_img = Image.open(temp_file_path)
+                    actual_size = verify_img.size
+                    verify_img.close()
+                    print(f"[Sora2] Verifying image before upload: {actual_size[0]}x{actual_size[1]}, expected: {target_width}x{target_height}")
+                    if actual_size != (target_width, target_height):
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Image dimensions mismatch. Image is {actual_size[0]}x{actual_size[1]} but must be {target_width}x{target_height} pixels. Please ensure PIL/Pillow is installed and image resizing is working."
+                        )
+                except HTTPException:
+                    raise
+                except Exception as verify_error:
+                    print(f"[Sora2] Warning: Error verifying image dimensions: {verify_error}")
+                    # Continue anyway, let OpenAI reject if wrong
+            
+            # Determine MIME type from file extension
+            if temp_file_path:
+                ext = os.path.splitext(temp_file_path)[1].lower()
+                mime_map = {
+                    '.png': 'image/png',
+                    '.jpg': 'image/jpeg',
+                    '.jpeg': 'image/jpeg',
+                    '.gif': 'image/gif',
+                    '.webp': 'image/webp'
+                }
+                mime_type = mime_map.get(ext, 'image/png')
+                filename = f'image{ext}'
+            else:
+                mime_type = 'image/png'
+                filename = 'image.png'
+            
+            print(f"[Sora2] Uploading image file: {filename}, MIME: {mime_type}, target size: {target_width}x{target_height}")
+            
+            # Prepare multipart form data
+            files = {
+                'input_reference': (filename, image_file, mime_type)
+            }
+            
+            data = {
+                "prompt": prompt,
+                "model": model,
+                "seconds": seconds,
+                "size": size,
+            }
+            
+            # Remove Content-Type header to let requests set it with boundary
+            headers.pop("Content-Type", None)
+            
+            # Make the request with multipart/form-data
+            resp = requests.post(url, headers=headers, data=data, files=files, timeout=90)
+            
+        except Exception as e:
+            print(f"[Sora2] Error uploading image to OpenAI: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to upload image to OpenAI Sora 2: {str(e)}"
+            )
+        finally:
+            # Clean up
+            try:
+                image_file.close()
+            except:
+                pass
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except:
+                    pass
+    else:
+        # No image, use JSON payload
+        headers["Content-Type"] = "application/json"
+        
+        json_payload = {
+            "prompt": prompt,
+            "model": model,
+            "seconds": seconds,
+            "size": size,
+        }
+        
+        # Make the request with JSON payload
+        resp = requests.post(url, headers=headers, json=json_payload, timeout=90)
+    
+    # Handle response (same for both JSON and multipart)
     if resp.status_code in (401, 403):
         raise HTTPException(status_code=resp.status_code, detail=f"OpenAI Sora 2 unauthorized: {resp.text}")
     if resp.status_code >= 400:
@@ -1128,6 +1562,56 @@ def _sora2_get_download(task_id: str) -> Optional[str]:
     # Frontend will need to call this with Authorization header
     # Or we can create a proxy endpoint in our backend
     return f"{_sora2_base_url()}/v1/videos/{task_id}/content"
+
+
+def _sora2_list_videos(limit: Optional[int] = None, after: Optional[str] = None, order: Optional[str] = None) -> Dict[str, Any]:
+    """
+    List recently generated videos from OpenAI.
+    Endpoint: GET /v1/videos
+    """
+    url = f"{_sora2_base_url()}/v1/videos"
+    headers = _sora2_headers()
+    
+    # Add request ID for debugging
+    request_id = str(uuid4())
+    headers["X-Client-Request-Id"] = request_id
+    
+    # Build query parameters
+    params = {}
+    if limit is not None:
+        params["limit"] = limit
+    if after:
+        params["after"] = after
+    if order:
+        params["order"] = order
+    
+    resp = requests.get(url, headers=headers, params=params, timeout=60)
+    if resp.status_code in (401, 403):
+        request_id = resp.headers.get("x-request-id", "unknown")
+        raise HTTPException(
+            status_code=resp.status_code, 
+            detail=f"OpenAI Sora 2 unauthorized: {resp.text} (Request ID: {request_id})"
+        )
+    if resp.status_code >= 400:
+        error_data = resp.json() if resp.content else {}
+        error_msg = error_data.get("error", {}).get("message", resp.text) if isinstance(error_data.get("error"), dict) else resp.text
+        request_id = resp.headers.get("x-request-id", "unknown")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, 
+            detail=f"OpenAI Sora 2 error ({resp.status_code}): {error_msg} (Request ID: {request_id})"
+        )
+    
+    data = resp.json() if resp.content else {}
+    return data
+
+
+def _sora2_retrieve_video(video_id: str) -> Dict[str, Any]:
+    """
+    Retrieve a specific video from OpenAI.
+    Endpoint: GET /v1/videos/{video_id}
+    This is the same as _sora2_get_status but with a clearer name for retrieval.
+    """
+    return _sora2_get_status(video_id)
 
 
 # ==============================
@@ -1722,6 +2206,51 @@ def _kling_create_image_task(
     return resp.json() if resp.content else {}
 
 
+def _process_image_url_for_kling(image_url: str) -> str:
+    """
+    Process image URL to extract base64 data for Kling AI.
+    Kling AI expects pure base64 string (without data:image/...;base64, prefix).
+    
+    Returns:
+        Pure base64 string if input is data URL, or original URL if HTTP/HTTPS
+    """
+    if not image_url or not image_url.strip():
+        raise ValueError("Image URL cannot be empty")
+    
+    image_url = image_url.strip()
+    
+    # Check if it's a base64 data URL
+    if image_url.startswith('data:image/'):
+        # Extract base64 data from data URL
+        # Format: data:image/png;base64,<base64_data>
+        try:
+            header, encoded = image_url.split(',', 1)
+            # Return pure base64 string (Kling AI expects this format)
+            return encoded
+        except ValueError:
+            raise ValueError("Invalid data URL format. Expected: data:image/<type>;base64,<base64_data>")
+    
+    # If it's HTTP/HTTPS URL, download and convert to base64
+    elif image_url.startswith('http://') or image_url.startswith('https://'):
+        try:
+            img_resp = requests.get(image_url, timeout=30)
+            img_resp.raise_for_status()
+            # Convert to base64
+            image_base64 = base64.b64encode(img_resp.content).decode('utf-8')
+            return image_base64
+        except requests.exceptions.RequestException as e:
+            raise ValueError(f"Failed to download image from URL: {str(e)}")
+    
+    # If it's already pure base64 (no prefix), return as is
+    else:
+        # Validate it's valid base64
+        try:
+            base64.b64decode(image_url, validate=True)
+            return image_url
+        except Exception:
+            raise ValueError("Image URL must be a valid data URL (data:image/...), HTTP/HTTPS URL, or base64 string")
+
+
 def _kling_create_image_to_image_task(
     prompt: str,
     image_url: str,
@@ -1758,18 +2287,34 @@ def _kling_create_image_to_image_task(
     elif not model_name.startswith("kling-"):
         model_name = "kling-v1"
     
+    # Process image URLs to extract base64 for Kling AI
+    try:
+        processed_image = _process_image_url_for_kling(image_url)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid image URL format: {str(e)}",
+        )
+    
     # Build payload according to official API documentation
     # For image-to-image, use "image" field (not "image_url")
     # image_reference: "subject" or "face" (for kling-v1-5)
     payload: Dict[str, Any] = {
         "model_name": model_name,
         "prompt": prompt.strip(),
-        "image": image_url.strip(),  # Official field name is "image" (not "image_url")
+        "image": processed_image,  # Pure base64 string
     }
     
     # Add second image for multi-image mode
     if mode_name == "multi-image" and image_url2:
-        payload["image2"] = image_url2.strip()
+        try:
+            processed_image2 = _process_image_url_for_kling(image_url2)
+            payload["image2"] = processed_image2
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid second image URL format: {str(e)}",
+            )
     
     # Add image_reference for kling-v1-5 models
     if model_name == "kling-v1-5" and mode_name in ["subject", "face"]:
@@ -1929,15 +2474,25 @@ def _kling_parse_video_url(data: Any) -> Optional[str]:
 app = FastAPI(title="Web3 Auth API")
 
 # CORS configuration - MUST be added before routes
+# Get allowed origins from environment or use defaults
+cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
+# Default origins for local development
+default_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+# Combine defaults with environment origins
+all_origins = default_origins + [origin.strip() for origin in cors_origins if origin.strip()]
+
+# In development, allow all origins for easier network access
+# Set ALLOW_ALL_ORIGINS=false in production for security
+allow_all_origins = os.getenv("ALLOW_ALL_ORIGINS", "true").lower() in ("true", "1", "yes")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        # Add any other frontend URLs you need
-    ],
+    allow_origins=["*"] if allow_all_origins else all_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
@@ -1971,12 +2526,14 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
                 detail="Password must be at most 72 characters.",
             )
 
-        existing = db.query(User).filter(User.email == user_in.email).first()
+        # Normalize email: trim whitespace and convert to lowercase
+        normalized_email = user_in.email.strip().lower()
+        existing = db.query(User).filter(func.lower(User.email) == normalized_email).first()
         if existing:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
         user = User(
-            email=user_in.email,
+            email=normalized_email,
             full_name=user_in.full_name,
             hashed_password=hash_password(user_in.password),
         )
@@ -1997,10 +2554,19 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
 
 @app.post("/auth/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    # Normalize email: trim whitespace and convert to lowercase for comparison
+    email_input = form_data.username.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == email_input).first()
+    
+    if not user:
+        print(f"[AUTH] Login failed: User not found for email: {email_input}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    
+    if not verify_password(form_data.password, user.hashed_password):
+        print(f"[AUTH] Login failed: Invalid password for email: {email_input}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
+    print(f"[AUTH] Login successful for user: {email_input} (ID: {user.id})")
     access_token = create_access_token(data={"sub": str(user.id)})
     return {"access_token": access_token, "token_type": "bearer", "user": user}
 
@@ -2058,12 +2624,14 @@ def google_callback(code: Optional[str] = None, state: Optional[str] = None, err
     if not email:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Google userinfo missing email: {info}")
 
-    user = db.query(User).filter(User.email == email).first()
+    # Normalize email: trim whitespace and convert to lowercase
+    normalized_email = email.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
     if not user:
         # Create user with a random password (so schema stays consistent).
         # If you want to allow password login later, user can use reset-password.
         random_pw = str(uuid4())
-        user = User(email=email, full_name=full_name, hashed_password=hash_password(random_pw))
+        user = User(email=normalized_email, full_name=full_name, hashed_password=hash_password(random_pw))
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -2084,26 +2652,66 @@ def google_callback(code: Optional[str] = None, state: Optional[str] = None, err
 
 @app.post("/auth/forgot-password")
 def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == body.email).first()
+    # Normalize email for case-insensitive lookup
+    email_input = body.email.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == email_input).first()
     if not user:
         # Untuk keamanan, jangan bocorkan bahwa email tidak terdaftar
-        return {"message": "If that email exists, a reset link has been generated."}
+        return {"message": "If that email exists, a reset code has been sent."}
 
-    token = create_reset_token(email=user.email)
-    user.reset_token = token
-    user.reset_token_expires_at = datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
+    # Generate 6-digit numeric code
+    reset_code = generate_reset_code()
+    user.reset_code = reset_code
+    user.reset_code_expires_at = datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
+
+    # Clear old JWT token if exists
+    user.reset_token = None
+    user.reset_token_expires_at = None
+
     db.add(user)
     db.commit()
 
-    # Di production kamu kirim token ini via email. Untuk sekarang kita return supaya mudah dites dari frontend.
-    return {"message": "Password reset token generated.", "reset_token": token}
+    # Send reset code via email (use email from database for consistency)
+    try:
+        send_reset_code_email(user.email, reset_code)
+        print(f"[FORGOT PASSWORD] Reset code sent to {user.email}: {reset_code}")
+    except Exception as email_error:
+        print(f"[FORGOT PASSWORD] Failed to send email to {user.email}: {email_error}")
+        # For development, still show code in console if email fails
+        print(f"[FORGOT PASSWORD] Reset code for {user.email}: {reset_code}")
+
+    return {"message": "If that email exists, a reset code has been sent."}
+
+
+@app.post("/auth/verify-reset-code")
+def verify_reset_code(body: VerifyResetCodeRequest, db: Session = Depends(get_db)):
+    # Normalize email for case-insensitive lookup
+    email_input = body.email.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == email_input).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email or code")
+
+    # Check if code matches and hasn't expired
+    if (
+        not user.reset_code
+        or user.reset_code != body.code
+        or not user.reset_code_expires_at
+        or user.reset_code_expires_at < datetime.utcnow()
+    ):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification code")
+
+    # Code is valid - don't clear it yet, will be used in reset-password
+    return {"message": "Code verified successfully"}
 
 
 @app.post("/auth/reset-password")
 def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Legacy endpoint using JWT token (for backward compatibility)"""
     email = verify_reset_token(body.token)
+    # Normalize email for case-insensitive lookup
+    email_input = email.strip().lower() if email else None
 
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(func.lower(User.email) == email_input).first() if email_input else None
     if (
         not user
         or user.reset_token != body.token
@@ -2113,6 +2721,36 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token")
 
     user.hashed_password = hash_password(body.new_password)
+    user.reset_token = None
+    user.reset_token_expires_at = None
+    db.add(user)
+    db.commit()
+
+    return {"message": "Password has been reset successfully."}
+
+
+@app.post("/auth/reset-password-with-code")
+def reset_password_with_code(body: ResetPasswordWithCodeRequest, db: Session = Depends(get_db)):
+    """New endpoint using numeric code"""
+    # Normalize email for case-insensitive lookup
+    email_input = body.email.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == email_input).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email")
+
+    # Verify code again (double check)
+    if (
+        not user.reset_code
+        or user.reset_code != body.code
+        or not user.reset_code_expires_at
+        or user.reset_code_expires_at < datetime.utcnow()
+    ):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification code")
+
+    # Reset password
+    user.hashed_password = hash_password(body.password)
+    user.reset_code = None
+    user.reset_code_expires_at = None
     user.reset_token = None
     user.reset_token_expires_at = None
     db.add(user)
@@ -2244,11 +2882,22 @@ def create_text_to_video_job(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt is required")
 
     # Spend coins for generation
-    # For sora2: map quality -> coins bucket (hd=180, standard=25). Otherwise use model-based bucket.
+    # For sora2: use duration-based pricing (4s=50, 8s=90, 12s=110 coins)
+    # For kling: use model-based pricing
+    # For others: use model-based pricing
     provider_check = (body.provider or _provider_name()).strip().lower()
     if provider_check == "sora2":
-        q = (body.quality or "standard").strip().lower()
-        cost_coins = 180 if q == "hd" else 25
+        # Duration-based pricing: 4s=50, 8s=90, 12s=110 coins
+        duration = int(body.duration_seconds or 4)
+        if duration == 4:
+            cost_coins = 50
+        elif duration == 8:
+            cost_coins = 90
+        elif duration == 12:
+            cost_coins = 110
+        else:
+            # Default to 4s pricing if duration is invalid
+            cost_coins = 50
     elif provider_check == "kling":
         # Kling AI pricing: premium models (v2-1, v2-0) = 180 coins, standard (v1-5, v1-0) = 25 coins
         model = (body.model or "").strip().lower()
@@ -2547,10 +3196,12 @@ def get_video_job(
                 _maybe_refund(job.get("error"))
             elif status_norm in ("completed", "succeeded", "success", "done"):
                 # OpenAI doesn't return video URL in status, need to download from /content endpoint
-                # Use our proxy endpoint to download and serve the video
+                # Use our proxy endpoint which will save video to our server
                 # Get backend base URL from env or use default
                 backend_url = os.getenv("BACKEND_URL") or "http://localhost:8001"
                 backend_url = backend_url.strip().rstrip("/")
+                # Use our stored video endpoint if available, otherwise use download endpoint
+                # The download endpoint will save the video on first access
                 job["video_url"] = f"{backend_url}/video/sora2/{task_id}/download"
                 job["status"] = "succeeded"
             else:
@@ -2620,25 +3271,105 @@ def get_video_job(
 @app.get("/video/sora2/{video_id}/download")
 def download_sora2_video(
     video_id: str,
-    current_user: User = Depends(get_current_user),
+    token: Optional[str] = Query(None, description="JWT token for authentication (alternative to Authorization header)"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
     db: Session = Depends(get_db),
 ):
     """
     Proxy endpoint to download OpenAI Sora 2 video content.
     This endpoint downloads the video from OpenAI and streams it to the client.
+    Accepts token either from query parameter (for video tag) or Authorization header.
     """
+    # Get token from query parameter or Authorization header
+    auth_token = token
+    if not auth_token and authorization:
+        # Extract token from "Bearer <token>" format
+        if authorization.startswith("Bearer "):
+            auth_token = authorization[7:]
+        else:
+            auth_token = authorization
+    
+    if not auth_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No token provided")
+    
+    # Validate token and get user
+    try:
+        current_user = get_user_from_token(auth_token, db)
+    except HTTPException:
+        raise
+    
+    # Log for debugging
+    print(f"[Download] Request for video_id: {video_id}, user_id: {current_user.id}, VIDEO_JOBS count: {len(VIDEO_JOBS)}")
+    
     # Verify the video belongs to the user
+    # video_id could be either:
+    # 1. provider_task_id (from OpenAI, e.g., "video_123")
+    # 2. job_id (our internal job ID)
     job = None
-    for j in VIDEO_JOBS.values():
-        if j.get("provider_task_id") == video_id and j.get("user_id") == current_user.id:
-            job = j
-            break
     
+    # First, try to find by job_id (if video_id is a job_id)
+    if video_id in VIDEO_JOBS:
+        candidate = VIDEO_JOBS[video_id]
+        if candidate.get("user_id") == current_user.id:
+            job = candidate
+            print(f"[Download] Found video in VIDEO_JOBS by job_id: {video_id}")
+    
+    # If not found, search by provider_task_id
     if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found or access denied")
+        for j in VIDEO_JOBS.values():
+            provider_task_id = j.get("provider_task_id")
+            # Compare as strings, handle both with and without "video_" prefix
+            if provider_task_id:
+                # Normalize both IDs for comparison
+                normalized_video_id = video_id.strip()
+                normalized_task_id = str(provider_task_id).strip()
+                # Remove "video_" prefix if present for comparison
+                if normalized_video_id.startswith("video_"):
+                    normalized_video_id = normalized_video_id[6:]
+                if normalized_task_id.startswith("video_"):
+                    normalized_task_id = normalized_task_id[6:]
+                
+                if normalized_task_id == normalized_video_id and j.get("user_id") == current_user.id:
+                    job = j
+                    print(f"[Download] Found video in VIDEO_JOBS by provider_task_id: {provider_task_id}")
+                    break
     
-    # Download video from OpenAI
-    url = f"{_sora2_base_url()}/v1/videos/{video_id}/content"
+    # Determine the provider_task_id to use
+    provider_task_id = None
+    
+    if job:
+        # Use provider_task_id from the job (not video_id from URL) to ensure we use the correct ID format
+        provider_task_id = job.get("provider_task_id")
+        if not provider_task_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Video job found but missing provider_task_id"
+            )
+    else:
+        # Video not found in VIDEO_JOBS (e.g., after server restart)
+        # Use the video_id directly - it should be the provider_task_id from the URL
+        # The video_id from URL is already in the correct format (e.g., "video_xxx")
+        provider_task_id = video_id.strip()
+        
+        print(f"[Download] Video not in VIDEO_JOBS. Using video_id directly as provider_task_id: {provider_task_id}")
+        
+        # Try to verify the video exists in OpenAI (optional check)
+        # If this fails, we'll still try to download (maybe video exists but API has issues)
+        try:
+            video_data = _sora2_retrieve_video(provider_task_id)
+            print(f"[Download] Video {provider_task_id} verified in OpenAI. Status: {video_data.get('status', 'unknown')}")
+        except HTTPException as verify_e:
+            if verify_e.status_code == 404:
+                print(f"[Download] Warning: Video {provider_task_id} not found in OpenAI (404). Will still attempt download.")
+                # Don't raise error here - let the download attempt handle it
+            else:
+                print(f"[Download] Warning: Could not verify video status: {verify_e.detail}. Will still attempt download.")
+        except Exception as verify_error:
+            print(f"[Download] Warning: Error verifying video: {verify_error}. Will still attempt download.")
+    
+    # Download video from OpenAI using the provider_task_id
+    # OpenAI expects the full ID including "video_" prefix if present
+    url = f"{_sora2_base_url()}/v1/videos/{provider_task_id}/content"
     headers = _sora2_headers()
     
     # Add request ID for debugging
@@ -2646,33 +3377,183 @@ def download_sora2_video(
     headers["X-Client-Request-Id"] = request_id
     
     try:
+        # First, verify the video exists and is ready by checking its status
+        try:
+            print(f"[Download] Verifying video status for: {provider_task_id}")
+            video_status = _sora2_retrieve_video(provider_task_id)
+            video_status_value = video_status.get("status", "").lower() if isinstance(video_status, dict) else ""
+            print(f"[Download] Video status: {video_status_value}")
+            
+            if video_status_value not in ("completed", "succeeded", "success", "done"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Video is not ready yet. Current status: {video_status_value}. Please wait for the video to complete generation."
+                )
+        except HTTPException as e:
+            # If it's a 404, that means video doesn't exist
+            if e.status_code == 404:
+                print(f"[Download] Video {provider_task_id} not found in OpenAI (404)")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Video not found in OpenAI: {provider_task_id}. The video may have been deleted or expired."
+                )
+            raise
+        except Exception as status_check_error:
+            # If status check fails, continue with download attempt anyway
+            print(f"[Download] Warning: Could not verify video status: {status_check_error}")
+        
+        # Now attempt to download the video
         resp = requests.get(url, headers=headers, timeout=120, stream=True)
+        
         if resp.status_code in (401, 403):
             request_id = resp.headers.get("x-request-id", "unknown")
             raise HTTPException(
                 status_code=resp.status_code, 
                 detail=f"OpenAI Sora 2 unauthorized: {resp.text} (Request ID: {request_id})"
             )
+        
+        if resp.status_code == 404:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Video not found: {provider_task_id}. The video may have been deleted or the ID is incorrect."
+            )
+        
         if resp.status_code >= 400:
-            error_data = resp.json() if resp.content else {}
-            error_msg = error_data.get("error", {}).get("message", resp.text) if isinstance(error_data.get("error"), dict) else resp.text
+            error_data = {}
+            error_msg = resp.text
+            try:
+                if resp.content:
+                    error_data = resp.json()
+                    if isinstance(error_data.get("error"), dict):
+                        error_msg = error_data.get("error", {}).get("message", resp.text)
+                    else:
+                        error_msg = str(error_data.get("error", resp.text))
+            except:
+                error_msg = resp.text[:500]  # Limit error message length
+            
             request_id = resp.headers.get("x-request-id", "unknown")
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY, 
                 detail=f"OpenAI Sora 2 error ({resp.status_code}): {error_msg} (Request ID: {request_id})"
             )
         
-        # Stream the video content to the client
-        return StreamingResponse(
-            resp.iter_content(chunk_size=8192),
-            media_type="video/mp4",
-            headers={
-                "Content-Disposition": f'attachment; filename="sora2-video-{video_id}.mp4"',
-            }
-        )
+        # Check if video is already stored in our server
+        stored_video = db.query(StoredVideo).filter(
+            StoredVideo.provider_task_id == provider_task_id,
+            StoredVideo.user_id == current_user.id,
+            StoredVideo.expires_at > datetime.utcnow()
+        ).first()
+        
+        if stored_video and os.path.exists(stored_video.file_path):
+            # Serve from our storage
+            print(f"[Download] Serving video from storage: {stored_video.file_path}")
+            file_path = Path(stored_video.file_path)
+            if file_path.exists():
+                def iterfile():
+                    with open(file_path, "rb") as f:
+                        while True:
+                            chunk = f.read(8192)
+                            if not chunk:
+                                break
+                            yield chunk
+                
+                return StreamingResponse(
+                    iterfile(),
+                    media_type="video/mp4",
+                    headers={
+                        "Content-Disposition": f'inline; filename="sora2-video-{video_id}.mp4"',
+                        "Content-Length": str(stored_video.file_size or file_path.stat().st_size),
+                    }
+                )
+        
+        # Video not stored yet, download from OpenAI and save it
+        print(f"[Download] Downloading and saving video: {provider_task_id}")
+        
+        # Create storage directory
+        storage_dir = Path(base_dir) / "storage" / "videos"
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename
+        file_name = f"{current_user.id}_{provider_task_id}_{uuid4().hex[:8]}.mp4"
+        file_path = storage_dir / file_name
+        
+        # Download and save video
+        file_size = 0
+        try:
+            with open(file_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        file_size += len(chunk)
+            
+            # Save to database with 2 days expiry
+            expires_at = datetime.utcnow() + timedelta(days=2)
+            stored_video = StoredVideo(
+                user_id=current_user.id,
+                provider_task_id=provider_task_id,
+                job_id=job.get("job_id") if job else None,
+                file_path=str(file_path),
+                file_size=file_size,
+                expires_at=expires_at
+            )
+            db.add(stored_video)
+            db.commit()
+            db.refresh(stored_video)
+            
+            print(f"[Download] Video saved: {file_path}, size: {file_size} bytes, expires: {expires_at}")
+            
+            # Now serve the saved file
+            def iterfile():
+                with open(file_path, "rb") as f:
+                    while True:
+                        chunk = f.read(8192)
+                        if not chunk:
+                            break
+                        yield chunk
+            
+            return StreamingResponse(
+                iterfile(),
+                media_type="video/mp4",
+                headers={
+                    "Content-Disposition": f'inline; filename="sora2-video-{video_id}.mp4"',
+                    "Content-Length": str(file_size),
+                }
+            )
+        except Exception as save_error:
+            # If save fails, try to clean up and stream directly
+            import traceback
+            print(f"[Download] Error saving video: {traceback.format_exc()}")
+            if file_path.exists():
+                try:
+                    file_path.unlink()
+                except:
+                    pass
+            
+            # Fallback: stream directly from OpenAI response
+            return StreamingResponse(
+                resp.iter_content(chunk_size=8192),
+                media_type="video/mp4",
+                headers={
+                    "Content-Disposition": f'inline; filename="sora2-video-{video_id}.mp4"',
+                    "Content-Length": resp.headers.get("Content-Length", ""),
+                }
+            )
     except HTTPException:
         raise
+    except requests.exceptions.Timeout:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Request to OpenAI timed out. Please try again later."
+        )
+    except requests.exceptions.ConnectionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to connect to OpenAI: {str(e)}"
+        )
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error downloading video: {error_trace}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to download video from OpenAI: {str(e)}"
@@ -2762,6 +3643,63 @@ def create_text_to_image_job(
     )
 
 
+# ==============================
+# Video cleanup endpoint (remove expired videos)
+# ==============================
+
+@app.post("/admin/videos/cleanup")
+def cleanup_expired_videos(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Cleanup expired videos (older than 2 days).
+    This endpoint can be called manually or by a cron job.
+    """
+    try:
+        now = datetime.utcnow()
+        expired_videos = db.query(StoredVideo).filter(
+            StoredVideo.expires_at < now
+        ).all()
+        
+        deleted_count = 0
+        deleted_size = 0
+        
+        for video in expired_videos:
+            # Delete file from disk
+            file_path = Path(video.file_path)
+            if file_path.exists():
+                try:
+                    file_size = file_path.stat().st_size
+                    file_path.unlink()
+                    deleted_size += file_size
+                    print(f"[Cleanup] Deleted expired video: {video.file_path} ({file_size} bytes)")
+                except Exception as e:
+                    print(f"[Cleanup] Error deleting file {video.file_path}: {e}")
+            
+            # Delete from database
+            db.delete(video)
+            deleted_count += 1
+        
+        db.commit()
+        
+        return {
+            "deleted_count": deleted_count,
+            "deleted_size_bytes": deleted_size,
+            "deleted_size_mb": round(deleted_size / (1024 * 1024), 2),
+            "message": f"Cleaned up {deleted_count} expired videos"
+        }
+    except Exception as e:
+        db.rollback()
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[Cleanup] Error: {error_trace}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cleanup videos: {str(e)}"
+        )
+
+
 @app.post("/image/image-to-image", response_model=ImageJobOut)
 def create_image_to_image_job(
     body: ImageToImageRequest,
@@ -2845,6 +3783,63 @@ def create_image_to_image_job(
         coins_spent=job.get("coins_spent"),
         coins_balance=job.get("coins_balance"),
     )
+
+
+# ==============================
+# Video cleanup endpoint (remove expired videos)
+# ==============================
+
+@app.post("/admin/videos/cleanup")
+def cleanup_expired_videos(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Cleanup expired videos (older than 2 days).
+    This endpoint can be called manually or by a cron job.
+    """
+    try:
+        now = datetime.utcnow()
+        expired_videos = db.query(StoredVideo).filter(
+            StoredVideo.expires_at < now
+        ).all()
+        
+        deleted_count = 0
+        deleted_size = 0
+        
+        for video in expired_videos:
+            # Delete file from disk
+            file_path = Path(video.file_path)
+            if file_path.exists():
+                try:
+                    file_size = file_path.stat().st_size
+                    file_path.unlink()
+                    deleted_size += file_size
+                    print(f"[Cleanup] Deleted expired video: {video.file_path} ({file_size} bytes)")
+                except Exception as e:
+                    print(f"[Cleanup] Error deleting file {video.file_path}: {e}")
+            
+            # Delete from database
+            db.delete(video)
+            deleted_count += 1
+        
+        db.commit()
+        
+        return {
+            "deleted_count": deleted_count,
+            "deleted_size_bytes": deleted_size,
+            "deleted_size_mb": round(deleted_size / (1024 * 1024), 2),
+            "message": f"Cleaned up {deleted_count} expired videos"
+        }
+    except Exception as e:
+        db.rollback()
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[Cleanup] Error: {error_trace}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cleanup videos: {str(e)}"
+        )
 
 
 @app.get("/image/job/{job_id}", response_model=ImageJobOut)
@@ -2980,3 +3975,60 @@ def get_image_job(
         coins_spent=job.get("coins_spent"),
         coins_balance=job.get("coins_balance"),
     )
+
+
+# ==============================
+# Video cleanup endpoint (remove expired videos)
+# ==============================
+
+@app.post("/admin/videos/cleanup")
+def cleanup_expired_videos(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Cleanup expired videos (older than 2 days).
+    This endpoint can be called manually or by a cron job.
+    """
+    try:
+        now = datetime.utcnow()
+        expired_videos = db.query(StoredVideo).filter(
+            StoredVideo.expires_at < now
+        ).all()
+        
+        deleted_count = 0
+        deleted_size = 0
+        
+        for video in expired_videos:
+            # Delete file from disk
+            file_path = Path(video.file_path)
+            if file_path.exists():
+                try:
+                    file_size = file_path.stat().st_size
+                    file_path.unlink()
+                    deleted_size += file_size
+                    print(f"[Cleanup] Deleted expired video: {video.file_path} ({file_size} bytes)")
+                except Exception as e:
+                    print(f"[Cleanup] Error deleting file {video.file_path}: {e}")
+            
+            # Delete from database
+            db.delete(video)
+            deleted_count += 1
+        
+        db.commit()
+        
+        return {
+            "deleted_count": deleted_count,
+            "deleted_size_bytes": deleted_size,
+            "deleted_size_mb": round(deleted_size / (1024 * 1024), 2),
+            "message": f"Cleaned up {deleted_count} expired videos"
+        }
+    except Exception as e:
+        db.rollback()
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[Cleanup] Error: {error_trace}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cleanup videos: {str(e)}"
+        )

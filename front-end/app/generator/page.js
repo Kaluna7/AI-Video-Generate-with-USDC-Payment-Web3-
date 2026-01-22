@@ -16,32 +16,28 @@ import TextToVideoSection from '../components/generator/sections/TextToVideoSect
 import ImageToVideoSection from '../components/generator/sections/ImageToVideoSection';
 import GenerateConfirmModal from '../components/generator/modals/GenerateConfirmModal';
 import { useAuthStore } from '../store/authStore';
-import { createTextToVideoJob, getCoinBalance, getVideoJob, createTextToImageJob, getImageJob } from '../lib/api';
-import { addVideoHistoryItem, formatRelativeTime, getVideoHistory } from '../lib/videoHistory';
+import { createTextToVideoJob, getCoinBalance, getVideoJob, createTextToImageJob, getImageJob, addTokenToVideoUrl } from '../lib/api';
+import { addVideoHistoryItem, formatRelativeTime, getVideoHistory, cleanupExpiredVideos } from '../lib/videoHistory';
 
 export default function GeneratorPage() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const setUser = useAuthStore((state) => state.setUser);
   const walletAddress = useAuthStore((state) => state.walletAddress);
+  const [mounted, setMounted] = useState(false);
   const [currentView, setCurrentView] = useState('home'); // 'home', 'text-to-video', 'image-to-video'
   const [activeTab, setActiveTab] = useState('text');
   const [prompt, setPrompt] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('Cinematic');
   // Provider selection (UI-driven; backend can still default via VIDEO_PROVIDER)
-  const [videoProvider, setVideoProvider] = useState('veo3'); // veo3 | sora2 | kling
-
-  // Veo 3.1 params
-  const [veoModel, setVeoModel] = useState('veo3-fast'); // veo3-fast | veo3
-  const [veoAspectRatio, setVeoAspectRatio] = useState('16:9'); // 16:9 | 9:16 | Auto
+  const [videoProvider, setVideoProvider] = useState('sora2'); // sora2 | ai
 
   // Sora2API params (api.sora2api.ai)
   const [soraAspectRatio, setSoraAspectRatio] = useState('landscape'); // landscape | portrait
-  const [soraQuality, setSoraQuality] = useState('standard'); // standard | hd
+  const [soraDuration, setSoraDuration] = useState(4); // 4, 8, or 12 seconds
   const [soraWatermark, setSoraWatermark] = useState('');
   const [soraImageUrls, setSoraImageUrls] = useState(''); // newline-separated URLs
 
-  // Kling AI params
-  const [klingModel, setKlingModel] = useState('v2-1-master'); // v1-0, v1-6, v2-0, v2-1-master, v2-5-turbo, v2-6
 
   // Legacy UI state (kept so existing components don't break if referenced elsewhere)
   const [selectedLength, setSelectedLength] = useState('10s');
@@ -65,20 +61,71 @@ export default function GeneratorPage() {
     currentViewRef.current = currentView;
   }, [prompt, activeTab, currentView]);
 
-  // Redirect to home if not logged in
+  // Mark as mounted to avoid hydration mismatch
   useEffect(() => {
-    if (!user) {
-      router.push('/');
-    }
-  }, [user, router]);
+    setMounted(true);
+  }, []);
 
-  // Scroll to top when view changes
+  // Fetch user info if not available but token exists
+  useEffect(() => {
+    if (!mounted) return; // Wait for client-side mount
+    
+    const fetchUser = async () => {
+      if (!user) {
+        const token = typeof window !== 'undefined' 
+          ? (document.cookie.match(/access_token=([^;]+)/)?.[1] || localStorage.getItem('access_token'))
+          : null;
+        
+        if (token) {
+          try {
+            const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+            const res = await fetch(`${API_BASE_URL}/auth/me`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+              const userData = await res.json();
+              setUser(userData);
+            } else {
+              // Token invalid, redirect to home
+              router.push('/');
+            }
+          } catch (e) {
+            console.error('Failed to fetch user:', e);
+            router.push('/');
+          }
+        } else {
+          // No token, redirect to home
+          router.push('/');
+        }
+      }
+    };
+    
+    fetchUser();
+  }, [mounted, user, router, setUser]);
+
+  // Scroll to top and reset video generation state when view changes
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+    // Reset video generation state when switching between different video/image views
+    // This prevents state from Text to Video appearing in Image to Video and vice versa
+    if (currentView === 'text-to-video' || currentView === 'image-to-video' || 
+        currentView === 'text-to-image' || currentView === 'image-to-image') {
+      setGenerationStatus('waiting');
+      setVideoUrl(null);
+      setVideoJobId(null);
+      setGenerationError('');
+      setPrompt(''); // Also reset prompt to avoid confusion
+    }
   }, [currentView]);
 
   // Local history is stored per "account". Prefer app user id, fall back to connected wallet, else anonymous.
   const historyUserId = user?.id || walletAddress || 'anonymous';
+
+  // Cleanup expired videos on mount
+  useEffect(() => {
+    cleanupExpiredVideos(historyUserId);
+  }, [historyUserId]);
 
   const recentGenerations =
     getVideoHistory(historyUserId)
@@ -100,16 +147,12 @@ export default function GeneratorPage() {
 
   // Calculate generation cost
   const calculateCost = () => {
-    // Coins pricing buckets: fast/standard=25, HQ/pro=180
-    if (videoProvider === 'sora2') {
-      return (soraQuality || '').toLowerCase() === 'hd' ? 180 : 25;
-    }
-    if (videoProvider === 'kling') {
-      // Kling AI: v2-0, v2-1-master, v2-5-turbo, v2-6 = 180 coins, v1-0, v1-6 = 25 coins
-      const model = (klingModel || '').toLowerCase();
-      return (model.includes('v2') || model.includes('2.1') || model.includes('2.0') || model.includes('2.5') || model.includes('2.6')) ? 180 : 25;
-    }
-    return veoModel === 'veo3' ? 180 : 25;
+    // Coins pricing based on duration: 4s=50, 8s=90, 12s=110
+    const duration = soraDuration || 4;
+    if (duration === 4) return 50;
+    if (duration === 8) return 90;
+    if (duration === 12) return 110;
+    return 50; // fallback
   };
 
   const handleGenerateClick = () => {
@@ -148,41 +191,57 @@ export default function GeneratorPage() {
         setGenerationStatus('generating');
 
         let job;
+        
+        // Helper function to process image URLs
+        const processImageUrls = (imageUrlsString) => {
+          if (!imageUrlsString || !imageUrlsString.trim()) return null;
+          
+          // Check if it's a base64 data URL (starts with data:image/)
+          if (imageUrlsString.trim().startsWith('data:image/')) {
+            // Return as single-element array for base64 data URL
+            return [imageUrlsString.trim()];
+          }
+          
+          // Otherwise, treat as newline-separated URLs
+          const urls = imageUrlsString
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          
+          return urls.length > 0 ? urls : null;
+        };
+        
         if (videoProvider === 'sora2') {
+          // Sora2 supports image-to-video via image_urls parameter
+          const imageUrls = activeTab === 'image' ? processImageUrls(soraImageUrls) : null;
+          
+          // Validate that image is provided for image-to-video
+          if (activeTab === 'image' && !imageUrls) {
+            setGenerationError('Please upload an image for image-to-video generation.');
+            setGenerationStatus('waiting');
+            return;
+          }
+          
           job = await createTextToVideoJob({
             prompt,
             provider: 'sora2',
             aspect_ratio: soraAspectRatio,
-            quality: soraQuality,
+            duration_seconds: soraDuration,
             watermark: soraWatermark || null,
-            image_urls: soraImageUrls
-              ? soraImageUrls
-                  .split('\n')
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-              : null,
-          });
-        } else if (videoProvider === 'kling') {
-          // Kling AI supports text-to-video and image-to-video
-          const imageUrls = activeTab === 'image' && soraImageUrls
-            ? soraImageUrls
-                .split('\n')
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : null;
-          job = await createTextToVideoJob({
-            prompt,
-            provider: 'kling',
-            model: klingModel,
-            duration_seconds: parseInt(selectedLength) || 5,
             image_urls: imageUrls,
           });
         } else {
+          // Fallback provider
+          if (activeTab === 'image' && soraImageUrls) {
+            setGenerationError('Please select a valid provider for generation.');
+            setGenerationStatus('waiting');
+            return;
+          }
+          
           job = await createTextToVideoJob({
             prompt,
-            provider: 'veo3',
-            model: veoModel,
-            aspect_ratio: veoAspectRatio,
+            provider: 'sora2',
+            aspect_ratio: soraAspectRatio || 'landscape',
           });
         }
         setVideoJobId(job.job_id);
@@ -194,23 +253,44 @@ export default function GeneratorPage() {
           // ignore
         }
         if (job.status === 'succeeded' && job.video_url) {
-          setVideoUrl(job.video_url);
+          // Store original video URL (without token) for history
+          const originalVideoUrl = job.video_url;
+          // Add token to video URL for authentication when displaying
+          const videoUrlWithToken = addTokenToVideoUrl(originalVideoUrl);
+          setVideoUrl(videoUrlWithToken);
           setGenerationStatus('ready');
 
           const title =
             prompt.split(/[.\n]/)[0]?.trim().slice(0, 32) ||
             (currentView === 'image-to-video' ? 'Image to Video' : 'Text to Video');
-          addVideoHistoryItem(historyUserId, {
-            id: `${job.job_id}`,
-            jobId: job.job_id,
-            type: activeTab === 'image' ? 'image' : 'text',
-            title,
-            prompt,
-            videoUrl: job.video_url,
-            coinsSpent: job.coins_spent || cost,
-            createdAt: Date.now(),
-          });
-          setHistoryTick((t) => t + 1);
+          
+          // Save video to history with original URL (token will be added when displaying)
+          try {
+            // Get current historyUserId (may have changed if user logged in/out)
+            const currentHistoryUserId = user?.id || walletAddress || 'anonymous';
+            console.log('Saving video to history (immediate):', { 
+              jobId: job.job_id, 
+              title, 
+              type: activeTab === 'image' ? 'image' : 'text',
+              historyUserId: currentHistoryUserId,
+              user: user ? { id: user.id, email: user.email } : null
+            });
+            
+            addVideoHistoryItem(currentHistoryUserId, {
+              id: `${job.job_id}`,
+              jobId: job.job_id,
+              type: activeTab === 'image' ? 'image' : 'text',
+              title,
+              prompt,
+              videoUrl: originalVideoUrl, // Store original URL, token added when displaying
+              coinsSpent: job.coins_spent || cost,
+              createdAt: Date.now(),
+            });
+            setHistoryTick((t) => t + 1);
+            console.log('Video saved successfully to history (immediate)');
+          } catch (error) {
+            console.error('Error saving video to history:', error);
+          }
         } else if (job.status === 'failed') {
           setGenerationError(job.error || 'Generation failed');
           setGenerationStatus('waiting');
@@ -238,7 +318,11 @@ export default function GeneratorPage() {
         const job = await getVideoJob(videoJobId);
         if (cancelled) return;
         if (job.status === 'succeeded' && job.video_url) {
-          setVideoUrl(job.video_url);
+          // Store original video URL (without token) for history
+          const originalVideoUrl = job.video_url;
+          // Add token to video URL for authentication when displaying
+          const videoUrlWithToken = addTokenToVideoUrl(originalVideoUrl);
+          setVideoUrl(videoUrlWithToken);
           setGenerationStatus('ready');
           clearInterval(interval);
 
@@ -248,16 +332,33 @@ export default function GeneratorPage() {
           const title =
             latestPrompt.split(/[.\n]/)[0]?.trim().slice(0, 32) ||
             (latestView === 'image-to-video' ? 'Image to Video' : 'Text to Video');
-          addVideoHistoryItem(historyUserId, {
-            id: `${videoJobId}`,
-            jobId: videoJobId,
-            type: latestTab === 'image' ? 'image' : 'text',
-            title,
-            prompt: latestPrompt,
-            videoUrl: job.video_url,
-            createdAt: Date.now(),
-          });
-          setHistoryTick((t) => t + 1);
+          
+          // Save video to history with original URL (token will be added when displaying)
+          try {
+            // Get current historyUserId (may have changed if user logged in/out)
+            const currentHistoryUserId = user?.id || walletAddress || 'anonymous';
+            console.log('Saving video to history:', { 
+              jobId: videoJobId, 
+              title, 
+              type: latestTab === 'image' ? 'image' : 'text',
+              historyUserId: currentHistoryUserId,
+              user: user ? { id: user.id, email: user.email } : null
+            });
+            
+            addVideoHistoryItem(currentHistoryUserId, {
+              id: `${videoJobId}`,
+              jobId: videoJobId,
+              type: latestTab === 'image' ? 'image' : 'text',
+              title,
+              prompt: latestPrompt,
+              videoUrl: originalVideoUrl, // Store original URL, token added when displaying
+              createdAt: Date.now(),
+            });
+            setHistoryTick((t) => t + 1);
+            console.log('Video saved successfully to history');
+          } catch (error) {
+            console.error('Error saving video to history:', error);
+          }
         } else if (job.status === 'failed') {
           const raw = job.error || 'Generation failed';
           const lower = String(raw).toLowerCase();
@@ -325,8 +426,29 @@ export default function GeneratorPage() {
     setCurrentView('my-images');
   };
 
+  // Prevent hydration mismatch by showing loading state until mounted
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // After mounted, check user and redirect if needed
   if (!user) {
-    return null; // Will redirect
+    // Will redirect via useEffect, but show loading to prevent hydration error
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -352,13 +474,14 @@ export default function GeneratorPage() {
               onNavigateToImage={handleNavigateToImage}
               onNavigateToTextImage={handleNavigateToTextImage}
               onNavigateToImageImage={handleNavigateToImageImage}
+              onNavigateToInspiration={handleNavigateToInspiration}
             />
           ) : currentView === 'inspiration' ? (
             <InspirationPage 
               onGenerateWithPrompt={(promptTitle, promptText) => {
+                // Navigate to text-to-image page and set the prompt
                 setPrompt(promptText);
-                setCurrentView('text-to-video');
-                setActiveTab('text');
+                setCurrentView('text-to-image');
               }}
             />
           ) : currentView === 'my-videos' ? (
@@ -367,6 +490,7 @@ export default function GeneratorPage() {
             <MyImagesPage />
           ) : currentView === 'text-to-image' ? (
             <TextToImagePage
+              initialPrompt={prompt}
               onGenerate={async (params) => {
                 try {
                   const job = await createTextToImageJob({
@@ -436,20 +560,14 @@ export default function GeneratorPage() {
                     setFrameRate={setFrameRate}
                     videoProvider={videoProvider}
                     setVideoProvider={setVideoProvider}
-                    veoModel={veoModel}
-                    setVeoModel={setVeoModel}
-                    veoAspectRatio={veoAspectRatio}
-                    setVeoAspectRatio={setVeoAspectRatio}
                     soraAspectRatio={soraAspectRatio}
                     setSoraAspectRatio={setSoraAspectRatio}
-                    soraQuality={soraQuality}
-                    setSoraQuality={setSoraQuality}
+                    soraDuration={soraDuration}
+                    setSoraDuration={setSoraDuration}
                     soraWatermark={soraWatermark}
                     setSoraWatermark={setSoraWatermark}
                     soraImageUrls={soraImageUrls}
                     setSoraImageUrls={setSoraImageUrls}
-                    klingModel={klingModel}
-                    setKlingModel={setKlingModel}
                     aiEnhancement={aiEnhancement}
                     setAiEnhancement={setAiEnhancement}
                     onGenerate={handleGenerateClick}

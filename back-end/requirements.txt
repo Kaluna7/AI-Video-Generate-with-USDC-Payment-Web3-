@@ -8,5 +8,6 @@ python-multipart==0.0.21
 email-validator==2.3.0
 requests==2.32.5
 python-dotenv==1.0.1
+Pillow>=10.0.0
 
 

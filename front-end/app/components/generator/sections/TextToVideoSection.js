@@ -1,7 +1,6 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import Image from 'next/image';
 import PromptBarsStack from './PromptBarsStack';
 
 // FAQ Item Component
@@ -115,41 +114,6 @@ export default function TextToVideoSection() {
     },
   ];
 
-  // Showcase images data - Fill this array with your images
-  // Each item should have: id, imageUrl (path to image), title, and description
-  // Images will be displayed in a beautiful grid with hover effects
-  const showcaseImages = [
-    {
-      id: 1,
-      imageUrl: '/assets/images/showcase-video-1.jpg', // Replace with your image path
-      title: 'Professional Content', // Add your title here
-      description: 'Create stunning professional videos with AI-powered generation', // Add your description here
-    },
-    {
-      id: 2,
-      imageUrl: '/assets/images/showcase-video-2.jpg', // Replace with your image path
-      title: 'Creative Workspaces', // Add your title here
-      description: 'Design inspiring video content for creative environments', // Add your description here
-    },
-    {
-      id: 3,
-      imageUrl: '/assets/images/showcase-video-3.jpg', // Replace with your image path
-      title: 'Lifestyle Videos', // Add your title here
-      description: 'Capture beautiful lifestyle moments and everyday scenes', // Add your description here
-    },
-    {
-      id: 4,
-      imageUrl: '/assets/images/showcase-video-4.jpg', // Replace with your image path
-      title: 'Business Content', // Add your title here
-      description: 'Professional business videos and corporate content', // Add your description here
-    },
-    {
-      id: 5,
-      imageUrl: '/assets/images/showcase-video-5.jpg', // Replace with your image path
-      title: 'Digital Art Videos', // Add your title here
-      description: 'Express your creativity with digital art and visual effects', // Add your description here
-    },
-  ];
 
   const Stars = ({ count = 5 }) => (
     <div className="flex items-center gap-1" aria-label={`${count} out of 5 stars`}>
@@ -195,7 +159,7 @@ export default function TextToVideoSection() {
               <span className="text-sm text-gray-500">•</span>
               <span className="text-sm text-gray-300 whitespace-nowrap">Cinematic motion, studio-ready results</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">High-quality Veo 3.1 generation</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">High-quality AI generation</span>
               <span className="text-sm text-gray-500">•</span>
               <span className="text-sm text-gray-300 whitespace-nowrap">Fast previews, smoother iterations</span>
               <span className="text-sm text-gray-500">•</span>
@@ -213,7 +177,7 @@ export default function TextToVideoSection() {
               <span className="text-sm text-gray-500">•</span>
               <span className="text-sm text-gray-300 whitespace-nowrap">Cinematic motion, studio-ready results</span>
               <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-300 whitespace-nowrap">High-quality Veo 3.1 generation</span>
+              <span className="text-sm text-gray-300 whitespace-nowrap">High-quality AI generation</span>
               <span className="text-sm text-gray-500">•</span>
               <span className="text-sm text-gray-300 whitespace-nowrap">Fast previews, smoother iterations</span>
               <span className="text-sm text-gray-500">•</span>
@@ -263,7 +227,7 @@ export default function TextToVideoSection() {
               <div className="w-9 h-9 rounded-xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center text-orange-300 font-bold">
                 2
               </div>
-              <p className="text-white font-semibold">Choose Veo settings</p>
+              <p className="text-white font-semibold">Choose generation settings</p>
             </div>
             <p className="mt-3 text-sm text-gray-300 leading-relaxed">
               Pick your model and aspect ratio (16:9 / 9:16)—optimized for Shorts, Reels, TikTok, or widescreen.
@@ -348,134 +312,6 @@ export default function TextToVideoSection() {
         </div>
       </div>
 
-      {/* Showcase Grid - Below Auto Scrolling Reviews */}
-      <div className="mb-12 mt-10">
-        {/* Showcase Header */}
-        <div className="text-center mb-6">
-          <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">
-            <span className="bg-linear-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
-              AI Video Generator
-            </span>
-            <span className="text-white"> — </span>
-            <span className="bg-linear-to-r from-violet-500 via-pink-300 to-orange-500 bg-clip-text text-transparent">
-              Ready for Anything
-            </span>
-          </h2>
-          <p className="text-base md:text-lg text-gray-400 max-w-2xl mx-auto">
-            Transform your ideas into stunning videos in seconds
-          </p>
-        </div>
-
-        {/* Showcase Grid - 2 rows, 3 cols: 1 big left (col 1, row 1-2), 4 small right (col 2-3, row 1-2) */}
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 grid-rows-2 gap-3 md:gap-4 lg:gap-5 items-center">
-          {showcaseImages.map((item, index) => {
-            // First image: big on left, spans 2 rows in column 1
-            // Next 4 images: small on right, 2x2 grid in columns 2-3
-            const isBigImage = index === 0;
-            const isSmallImage = index > 0 && index <= 4;
-            
-            // Calculate grid position for small images (2x2 grid in columns 2-3)
-            let gridStyles = {};
-            
-            if (isBigImage) {
-              // Big image: column 1, spans rows 1-2
-              gridStyles = {
-                gridColumn: '1 / 2',
-                gridRow: '1 / 3',
-              };
-            } else if (isSmallImage) {
-              const smallIndex = index - 1; // 0-3 for the 4 small images
-              // Position in 2x2 grid: (0,0), (1,0), (0,1), (1,1)
-              const gridCol = smallIndex % 2; // 0 or 1
-              const gridRow = Math.floor(smallIndex / 2); // 0 or 1
-              const colStart = 2 + gridCol; // Column 2 or 3
-              const rowStart = 1 + gridRow; // Row 1 or 2
-              gridStyles = {
-                gridColumn: `${colStart} / ${colStart + 1}`,
-                gridRow: `${rowStart} / ${rowStart + 1}`,
-              };
-            }
-            
-            return (
-              <div
-                key={item.id}
-                className={`group relative rounded-xl md:rounded-2xl overflow-hidden cursor-pointer transform transition-all duration-500 hover:scale-[1.05] hover:z-10 hover:shadow-2xl hover:shadow-purple-500/30 ${
-                  isBigImage 
-                    ? 'md:row-span-2 md:col-span-1 md:self-center aspect-[3/4] md:aspect-[2/3] md:max-h-[550px]' 
-                    : isSmallImage
-                    ? 'aspect-square'
-                    : 'aspect-square'
-                }`}
-                style={{
-                  animationDelay: `${index * 100}ms`,
-                  ...gridStyles,
-                }}
-              >
-                {/* Image Background with Gradient Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/40 via-blue-500/40 to-cyan-500/40 overflow-hidden">
-                  {/* Actual Image - Use Next.js Image for optimization */}
-                  {item.imageUrl && !item.imageUrl.includes('showcase-video-') ? (
-                    <div className="relative w-full h-full">
-                      <Image 
-                        src={item.imageUrl} 
-                        alt={item.title} 
-                        fill
-                        className="object-cover group-hover:scale-110 transition-transform duration-700" 
-                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                      />
-                    </div>
-                  ) : (
-                    // Placeholder gradient when no image is provided
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-600/50 via-blue-600/50 to-cyan-600/50 opacity-70 group-hover:opacity-50 transition-opacity duration-500"></div>
-                  )}
-                  
-                  {/* Pattern overlay for visual interest */}
-                  <div className="absolute inset-0 opacity-10 group-hover:opacity-20 transition-opacity duration-500 pointer-events-none" 
-                    style={{
-                      backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)',
-                      backgroundSize: '24px 24px',
-                    }}
-                  ></div>
-                </div>
-
-                {/* Hover Overlay with Title and Description */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/70 to-black/30 opacity-0 group-hover:opacity-100 transition-all duration-500 flex flex-col justify-end p-4 md:p-5">
-                  <div className="transform translate-y-6 group-hover:translate-y-0 transition-all duration-500">
-                    {/* Title */}
-                    <h3 className="text-white font-bold text-base md:text-lg mb-2 line-clamp-2 group-hover:text-purple-300 transition-colors duration-300">
-                      {item.title}
-                    </h3>
-                    {/* Description */}
-                    <p className="text-gray-300 text-xs md:text-sm line-clamp-3 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100">
-                      {item.description}
-                    </p>
-                    
-                    {/* Action Indicator */}
-                    <div className="mt-3 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-200">
-                      <span className="text-purple-400 text-xs font-medium">Explore</span>
-                      <svg className="w-4 h-4 text-purple-400 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Decorative Corner Accents */}
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-purple-500/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-bl-full"></div>
-                <div className="absolute bottom-0 left-0 w-20 h-20 bg-gradient-to-tr from-blue-500/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-tr-full"></div>
-
-                {/* Shine Effect on Hover */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out"></div>
-
-                {/* Border Glow Effect */}
-                <div className="absolute inset-0 rounded-2xl border-2 border-transparent group-hover:border-purple-500/50 transition-all duration-500"></div>
-              </div>
-            );
-          })}
-          </div>
-        </div>
-      </div>
 
       {/* FAQ Section */}
       <div className="mt-20 mb-16">
@@ -500,11 +336,11 @@ export default function TextToVideoSection() {
             },
             {
               question: 'How long does it take to generate a video?',
-              answer: 'Generation time depends on the model you choose and video length. Fast models (like veo3-fast) typically take 2-5 minutes, while high-quality models may take 10-20 minutes. You can track progress in real-time through the preview panel.',
+              answer: 'Generation time depends on the quality settings you choose and video length. Fast generation typically takes 2-5 minutes, while high-quality generation may take 10-20 minutes. You can track progress in real-time through the preview panel.',
             },
             {
               question: 'What makes PrimeStudio different from other AI video generators?',
-              answer: 'PrimeStudio offers multiple AI models (including Veo 3.1), fast previews, seamless iteration, and studio-ready output quality. Our platform is optimized for creators who need to ship content quickly without compromising on quality.',
+              answer: 'PrimeStudio offers advanced AI models, fast previews, seamless iteration, and studio-ready output quality. Our platform is optimized for creators who need to ship content quickly without compromising on quality.',
             },
             {
               question: 'Can I customize the style and motion of generated videos?',
@@ -537,7 +373,7 @@ export default function TextToVideoSection() {
               <div className="relative order-2 lg:order-1">
                 <div className="aspect-video bg-[#0a0d12] rounded-2xl border border-white/10 overflow-hidden group relative shadow-2xl">
                   <video
-                    className="w-full h-full object-cover"
+                    className="absolute inset-0 w-full h-full object-cover"
                     src="/assets/video/samoyed_ball.mp4"
                     autoPlay
                     loop

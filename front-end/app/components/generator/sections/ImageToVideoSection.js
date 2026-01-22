@@ -45,41 +45,6 @@ export default function ImageToVideoSection() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Showcase images data - Fill this array with your images
-  // Each item should have: id, imageUrl (path to image), title, and description
-  // Images will be displayed in a beautiful grid with hover effects
-  const showcaseImages = [
-    {
-      id: 1,
-      imageUrl: '/assets/images/showcase-image-video-1.jpg', // Replace with your image path
-      title: 'Portrait Animation', // Add your title here
-      description: 'Bring static portraits to life with natural motion and expressions', // Add your description here
-    },
-    {
-      id: 2,
-      imageUrl: '/assets/images/showcase-image-video-2.jpg', // Replace with your image path
-      title: 'Product Showcase', // Add your title here
-      description: 'Transform product photos into engaging video advertisements', // Add your description here
-    },
-    {
-      id: 3,
-      imageUrl: '/assets/images/showcase-image-video-3.jpg', // Replace with your image path
-      title: 'Scene Animation', // Add your title here
-      description: 'Add cinematic motion to any scene or landscape image', // Add your description here
-    },
-    {
-      id: 4,
-      imageUrl: '/assets/images/showcase-image-video-4.jpg', // Replace with your image path
-      title: 'Character Movement', // Add your title here
-      description: 'Animate characters with realistic movement and gestures', // Add your description here
-    },
-    {
-      id: 5,
-      imageUrl: '/assets/images/showcase-image-video-5.jpg', // Replace with your image path
-      title: 'Dynamic Transitions', // Add your title here
-      description: 'Create smooth transitions and camera movements from still images', // Add your description here
-    },
-  ];
 
   const marqueeItems = [
     'Animate portraits with natural motion',
@@ -240,90 +205,6 @@ export default function ImageToVideoSection() {
           </div>
         </div>
 
-        {/* Showcase Grid - Horizontal Card Layout */}
-        <div className="mt-20 mb-16">
-          {/* Showcase Header */}
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
-              <span className="bg-linear-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">
-                From Still to Motion
-              </span>
-            </h2>
-            <p className="text-lg text-gray-400 max-w-2xl mx-auto">
-              Watch your images come alive with AI-powered animation and motion
-            </p>
-          </div>
-
-          {/* Showcase Grid - Horizontal Scrollable Cards */}
-          <div className="max-w-7xl mx-auto">
-            <div className="flex gap-4 md:gap-6 overflow-x-auto pb-4 hide-scrollbar snap-x snap-mandatory">
-              {showcaseImages.map((item, index) => {
-                return (
-                  <div
-                    key={item.id}
-                    className="group relative min-w-[280px] md:min-w-[320px] lg:min-w-[360px] aspect-[4/5] rounded-2xl overflow-hidden cursor-pointer transform transition-all duration-500 hover:scale-[1.03] hover:z-10 hover:shadow-2xl hover:shadow-emerald-500/30 snap-start"
-                    style={{
-                      animationDelay: `${index * 100}ms`,
-                    }}
-                  >
-                    {/* Image Background with Gradient Overlay */}
-                    <div className="absolute inset-0 bg-linear-to-br from-emerald-500/30 via-teal-500/30 to-cyan-500/30 overflow-hidden">
-                      {item.imageUrl && !item.imageUrl.includes('showcase-image-video-') ? (
-                        <div className="relative w-full h-full">
-                          <Image 
-                            src={item.imageUrl} 
-                            alt={item.title} 
-                            fill
-                            className="object-cover group-hover:scale-110 transition-transform duration-700" 
-                            sizes="(max-width: 640px) 280px, (max-width: 1024px) 320px, 360px"
-                          />
-                        </div>
-                      ) : (
-                        <div className="absolute inset-0 bg-linear-to-br from-emerald-600/40 via-teal-600/40 to-cyan-600/40 opacity-70 group-hover:opacity-50 transition-opacity duration-500"></div>
-                      )}
-                      
-                      {/* Animated gradient overlay */}
-                      <div className="absolute inset-0 bg-linear-to-br from-emerald-400/0 via-teal-400/0 to-cyan-400/0 group-hover:from-emerald-400/10 group-hover:via-teal-400/10 group-hover:to-cyan-400/10 transition-all duration-500"></div>
-                    </div>
-
-                    {/* Hover Overlay with Title and Description - Side Panel Style */}
-                    <div className="absolute inset-0 bg-linear-to-r from-black/0 via-black/0 to-black/90 opacity-0 group-hover:opacity-100 transition-all duration-500 flex flex-col justify-center items-end p-5 md:p-6">
-                      <div className="w-full max-w-[80%] transform translate-x-8 group-hover:translate-x-0 transition-all duration-500">
-                        <div className="mb-3">
-                          <div className="w-12 h-1 bg-linear-to-r from-emerald-400 to-cyan-400 rounded-full mb-3"></div>
-                          <h3 className="text-white font-bold text-lg md:text-xl mb-2 group-hover:text-emerald-300 transition-colors duration-300">
-                            {item.title}
-                          </h3>
-                        </div>
-                        <p className="text-gray-300 text-sm md:text-base leading-relaxed mb-4 opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100">
-                          {item.description}
-                        </p>
-                        
-                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-200">
-                          <span className="text-emerald-400 text-sm font-medium">Learn More</span>
-                          <svg className="w-5 h-5 text-emerald-400 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Top Badge */}
-                    <div className="absolute top-4 left-4 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-full border border-emerald-500/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                      <span className="text-xs font-medium text-emerald-300">Animated</span>
-                    </div>
-
-                    {/* Bottom Gradient Accent */}
-                    <div className="absolute bottom-0 left-0 right-0 h-32 bg-linear-to-t from-emerald-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-
-                    {/* Border Glow Effect */}
-                    <div className="absolute inset-0 rounded-2xl border-2 border-transparent group-hover:border-emerald-500/50 transition-all duration-500"></div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
 
         {/* FAQ Section - Different Style */}
         <div className="mt-20 mb-16">
@@ -413,7 +294,7 @@ export default function ImageToVideoSection() {
                   <div className="aspect-video bg-[#0a0d12] rounded-2xl border-2 border-emerald-500/20 overflow-hidden group relative shadow-2xl shadow-emerald-500/10">
                     <video
                       className="w-full h-full object-cover"
-                      src="/assets/video/samoyed_ball.mp4"
+                      src="/assets/video/dog_love.mp4"
                       autoPlay
                       loop
                       muted

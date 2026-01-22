@@ -21,7 +21,7 @@ export default function Header() {
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
         scrolled 
           ? 'glass-modern shadow-lg' 
-          : 'bg-transparent'
+          : 'bg-black/90 backdrop-blur-md'
       }`}
     >
       <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
@@ -35,14 +35,19 @@ export default function Header() {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-1">
-            {['Home', 'Features', 'Pricing'].map((item, index) => (
+            {[
+              { name: 'Home', href: '#home' },
+              { name: 'Features', href: '#features' },
+              { name: 'How It Works', href: '#how-it-works' },
+              { name: 'Pricing', href: '#pricing' }
+            ].map((item, index) => (
               <a
-                key={item}
-                href={`#${item.toLowerCase()}`}
+                key={item.name}
+                href={item.href}
                 className="px-4 py-2 text-gray-300 hover:text-white transition-all duration-300 relative group fade-in-up"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
-                <span className="relative z-10">{item}</span>
+                <span className="relative z-10">{item.name}</span>
                 <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300 group-hover:w-full" />
               </a>
             ))}
@@ -78,14 +83,19 @@ export default function Header() {
         {/* Mobile Menu */}
         {isMenuOpen && (
           <div className="md:hidden pb-3 space-y-1 fade-in-up">
-            {['Home', 'Features', 'Pricing'].map((item) => (
+            {[
+              { name: 'Home', href: '#home' },
+              { name: 'Features', href: '#features' },
+              { name: 'How It Works', href: '#how-it-works' },
+              { name: 'Pricing', href: '#pricing' }
+            ].map((item) => (
               <a
-                key={item}
-                href={`#${item.toLowerCase()}`}
+                key={item.name}
+                href={item.href}
                 onClick={() => setIsMenuOpen(false)}
                 className="block px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all duration-300"
               >
-                {item}
+                {item.name}
               </a>
             ))}
           </div>

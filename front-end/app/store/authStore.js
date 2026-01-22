@@ -33,10 +33,25 @@ const getInitialCoinBalance = () => {
   return 0;
 };
 
+const getInitialUser = () => {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('user');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        console.error('Failed to parse user from localStorage:', e);
+        localStorage.removeItem('user');
+      }
+    }
+  }
+  return null;
+};
+
 export const useAuthStore = create((set) => ({
   isAuthModalOpen: false,
   activeTab: 'login', // 'login' or 'register'
-  user: null, // { id, email, full_name }
+  user: getInitialUser(), // { id, email, full_name }
   usdcBalance: getInitialBalance(), // USDC balance
   walletAddress: getInitialWallet(), // Connected wallet address
   freeGenerationUsed: getFreeGenerationUsed(), // Track if free generation has been used
@@ -45,7 +60,17 @@ export const useAuthStore = create((set) => ({
   openAuthModal: (tab = 'login') => set({ isAuthModalOpen: true, activeTab: tab }),
   closeAuthModal: () => set({ isAuthModalOpen: false }),
   setActiveTab: (tab) => set({ activeTab: tab }),
-  setUser: (user) => set({ user }),
+  setUser: (user) => {
+    set({ user });
+    // Also persist to localStorage
+    if (typeof window !== 'undefined') {
+      if (user) {
+        localStorage.setItem('user', JSON.stringify(user));
+      } else {
+        localStorage.removeItem('user');
+      }
+    }
+  },
   setUsdcBalance: (balance) => {
     set({ usdcBalance: balance });
     // Also update localStorage
@@ -78,6 +103,15 @@ export const useAuthStore = create((set) => ({
   },
   openTopUpModal: () => set({ isTopUpModalOpen: true }),
   closeTopUpModal: () => set({ isTopUpModalOpen: false }),
-  logout: () => set({ user: null }),
+  logout: () => {
+    set({ user: null });
+    // Clear user and token from localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('user');
+      localStorage.removeItem('access_token');
+      // Also clear cookie
+      document.cookie = 'access_token=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;';
+    }
+  },
 }));
 
