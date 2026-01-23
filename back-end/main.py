@@ -21,9 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import Column, Integer, String, DateTime, Text, create_engine, func
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy import Column, Integer, String, DateTime, Text, func
+from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 import requests
@@ -41,33 +40,18 @@ if load_dotenv:
     base_dir = Path(__file__).resolve().parent
     load_dotenv(base_dir / ".env")
     load_dotenv(base_dir.parent / ".env")
+
 # ==============================
 # Database configuration
 # ==============================
-DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL:
-    # Normalize common .env issues: surrounding quotes or trailing whitespace.
-    DATABASE_URL = DATABASE_URL.strip().strip('"').strip("'")
-if not DATABASE_URL:
-    if load_dotenv is None:
-        raise RuntimeError(
-            "DATABASE_URL is not set and python-dotenv is missing. "
-            "Install it (pip install python-dotenv) or set DATABASE_URL in OS env vars."
-        )
-    # Default to SQLite for development
-    DATABASE_URL = "sqlite:///./dev.db"
-    print(f"[DB] Using default SQLite database: {DATABASE_URL}")
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# Import database configuration and models
+from database import get_db, engine, Base, init_db
+from models import User, UserCoinBalance, CoinTopUpTx, StoredVideo
 
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Initialize database - create all tables
+# This must be called AFTER all models are imported
+# Safe to call multiple times - won't recreate existing tables
+init_db()
 
 
 # ==============================
@@ -619,61 +603,8 @@ def _google_get_userinfo(access_token: str) -> dict:
 # ==============================
 # ORM models
 # ==============================
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True, nullable=False)
-    full_name = Column(String, nullable=True)
-    hashed_password = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    reset_token = Column(String, nullable=True)
-    reset_token_expires_at = Column(DateTime, nullable=True)
-    reset_code = Column(String, nullable=True)
-    reset_code_expires_at = Column(DateTime, nullable=True)
-
-
-class UserCoinBalance(Base):
-    __tablename__ = "user_coin_balances"
-
-    user_id = Column(Integer, primary_key=True, index=True)
-    coins = Column(Integer, nullable=False, default=0)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class CoinTopUpTx(Base):
-    __tablename__ = "coin_topup_txs"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True, nullable=False)
-    tx_hash = Column(String, unique=True, index=True, nullable=False)
-    amount_wei = Column(String, nullable=False)  # store as decimal string
-    coins_added = Column(Integer, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class StoredVideo(Base):
-    __tablename__ = "stored_videos"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True, nullable=False)
-    provider_task_id = Column(String, index=True, nullable=False)  # OpenAI video ID
-    job_id = Column(String, index=True, nullable=True)  # Our internal job ID
-    file_path = Column(String, nullable=False)  # Path to stored video file
-    file_size = Column(Integer, nullable=True)  # File size in bytes
-    expires_at = Column(DateTime, nullable=False, index=True)  # Auto-delete after 2 days
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-
-
-# Create tables if they don't exist (safe to call multiple times)
-print("[DB] Creating tables if they don't exist...")
-try:
-    Base.metadata.create_all(bind=engine)
-    print("[DB] Tables ready")
-except Exception as e:
-    print(f"[DB] Error creating tables: {e}")
+# Models are now imported from models.py
+# Database tables are auto-created by database.py on import
 
 
 # ==============================
