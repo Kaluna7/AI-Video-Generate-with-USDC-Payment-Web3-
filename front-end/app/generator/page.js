@@ -65,6 +65,13 @@ function GeneratorPageContent() {
   useEffect(() => {
     const view = searchParams.get('view') || 'home';
     setCurrentView(view);
+    
+    // Auto-set activeTab based on view
+    if (view === 'image-to-video') {
+      setActiveTab('image');
+    } else if (view === 'text-to-video') {
+      setActiveTab('text');
+    }
   }, [searchParams]);
 
   // Mark as mounted to avoid hydration mismatch
