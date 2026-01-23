@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 
 // FAQ Item Component - Different Style
@@ -39,11 +39,71 @@ function FAQItem({ question, answer }) {
   );
 }
 
-export default function ImageToVideoSection() {
+export default function ImageToVideoSection({ soraImageUrls, setSoraImageUrls }) {
+  const [uploadedFile, setUploadedFile] = useState(null);
+  // Initialize imagePreview from soraImageUrls if available
+  const [imagePreview, setImagePreview] = useState(() => {
+    if (soraImageUrls && soraImageUrls.trim()) {
+      if (soraImageUrls.startsWith('data:image/') || soraImageUrls.startsWith('http://') || soraImageUrls.startsWith('https://')) {
+        return soraImageUrls;
+      }
+    }
+    return null;
+  });
+  const fileInputRef = useRef(null);
+
   const scrollToTop = () => {
     if (typeof window === 'undefined') return;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Handle file upload
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Image size should be less than 10MB');
+      return;
+    }
+
+    setUploadedFile(file);
+    // Create preview and update soraImageUrls with base64 data URL
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target.result;
+      setImagePreview(dataUrl);
+      // Update soraImageUrls with base64 data URL for image-to-video
+      if (setSoraImageUrls) {
+        setSoraImageUrls(dataUrl);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Sync imagePreview with soraImageUrls when it changes externally (only if no uploaded file)
+  useEffect(() => {
+    if (uploadedFile) {
+      // If we have an uploaded file, don't sync with soraImageUrls
+      return;
+    }
+    
+    const newPreview = soraImageUrls && soraImageUrls.trim() && 
+      (soraImageUrls.startsWith('data:image/') || soraImageUrls.startsWith('http://') || soraImageUrls.startsWith('https://'))
+      ? soraImageUrls 
+      : null;
+    
+    // Only update if different to avoid unnecessary re-renders
+    setImagePreview(prev => prev !== newPreview ? newPreview : prev);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soraImageUrls]); // Only depend on soraImageUrls
 
 
   const marqueeItems = [
@@ -110,8 +170,77 @@ export default function ImageToVideoSection() {
             </div>
 
             <div className="mt-5 space-y-3">
+              {/* Step 1: Upload an image - Interactive */}
+              <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/20 flex items-center justify-center text-purple-200 font-semibold">
+                    01
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white font-semibold">Upload an image</p>
+                    <p className="mt-1 text-sm text-gray-300 leading-relaxed">Start from a portrait, product, or scene. Clean inputs yield the best motion.</p>
+                    
+                    {/* File Input */}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                    
+                    {/* Upload Button or Preview */}
+                    <div className="mt-3">
+                      {imagePreview ? (
+                        <div className="space-y-2">
+                          <div className="relative rounded-lg overflow-hidden border border-purple-500/30 bg-black/40 max-h-32">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={imagePreview}
+                              alt="Uploaded preview"
+                              className="w-full h-auto max-h-32 object-contain mx-auto"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                              }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs text-gray-400 truncate">{uploadedFile?.name || 'Image uploaded'}</p>
+                            <button
+                              onClick={() => {
+                                setUploadedFile(null);
+                                setImagePreview(null);
+                                if (setSoraImageUrls) {
+                                  setSoraImageUrls('');
+                                }
+                                if (fileInputRef.current) {
+                                  fileInputRef.current.value = '';
+                                }
+                              }}
+                              className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full px-4 py-2.5 rounded-lg border-2 border-dashed border-purple-500/30 hover:border-purple-500/50 bg-purple-500/5 hover:bg-purple-500/10 transition-all flex items-center justify-center gap-2 text-sm text-purple-300 hover:text-purple-200"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span>Choose Image</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step 2 & 3 */}
               {[
-                { n: '01', t: 'Upload an image', d: 'Start from a portrait, product, or scene. Clean inputs yield the best motion.' },
                 { n: '02', t: 'Describe the motion', d: 'Tell us camera move, mood, and action—keep it short and specific.' },
                 { n: '03', t: 'Generate variations', d: 'Iterate quickly until it looks right. Save the best and ship.' },
               ].map((s) => (
@@ -157,13 +286,25 @@ export default function ImageToVideoSection() {
                     Source image
                   </div>
                   <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/30 p-4 flex items-center justify-center">
-                    <Image
-                      src="/assets/images/coin-3d.svg"
-                      alt="Source"
-                      width={280}
-                      height={280}
-                      className="w-28 h-28 md:w-32 md:h-32 drop-shadow-2xl"
-                    />
+                    {imagePreview ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={imagePreview}
+                        alt="Uploaded source"
+                        className="w-full h-auto max-h-48 object-contain drop-shadow-2xl"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <Image
+                        src="/assets/images/coin-3d.svg"
+                        alt="Source"
+                        width={280}
+                        height={280}
+                        className="w-28 h-28 md:w-32 md:h-32 drop-shadow-2xl"
+                      />
+                    )}
                   </div>
                 </div>
 

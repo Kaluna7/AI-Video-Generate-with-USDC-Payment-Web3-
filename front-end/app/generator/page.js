@@ -613,7 +613,10 @@ function GeneratorPageContent() {
       {currentView === 'image-to-video' && (
         <div className="lg:pl-20 pb-10">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-[1600px]">
-            <ImageToVideoSection />
+            <ImageToVideoSection 
+              soraImageUrls={soraImageUrls}
+              setSoraImageUrls={setSoraImageUrls}
+            />
           </div>
         </div>
       )}
