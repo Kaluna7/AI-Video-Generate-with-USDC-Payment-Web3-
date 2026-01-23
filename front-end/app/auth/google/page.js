@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
+import { getCoinBalance } from '../../lib/api';
 
 // Cookie helper function (same as in api.js)
 const setCookie = (name, value, days = 1) => {
@@ -21,7 +22,7 @@ const API_BASE_URL = getApiBaseUrl();
 function GoogleAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const setUser = useAuthStore((s) => s.setUser);
+  const { setUser, setCoinBalance } = useAuthStore();
   const [message, setMessage] = useState('Finishing Google sign-in...');
 
   useEffect(() => {
@@ -73,7 +74,16 @@ function GoogleAuthCallbackContent() {
         }
         const user = await res.json();
         setUser(user);
-        
+
+        // Fetch latest coin balance from backend
+        try {
+          const balanceData = await getCoinBalance();
+          setCoinBalance(balanceData.coins);
+        } catch (e) {
+          console.error('Failed to fetch coin balance:', e);
+          // Balance will remain 0 or from localStorage
+        }
+
         // Small delay to ensure state is saved before redirect
         setTimeout(() => {
           router.replace('/generator');

@@ -47,7 +47,10 @@ export default function Footer() {
 
           {/* CTA Button */}
           <div className="flex justify-center items-center mb-12">
-            <button className="btn-3d px-8 py-4 gradient-purple-blue text-white rounded-xl font-semibold text-lg hover:shadow-xl hover:shadow-purple-500/30 transition-all duration-300">
+            <button
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="btn-3d px-8 py-4 gradient-purple-blue text-white rounded-xl font-semibold text-lg hover:shadow-xl hover:shadow-purple-500/30 transition-all duration-300"
+            >
               Start Creating Now
             </button>
           </div>
@@ -110,7 +113,7 @@ export default function Footer() {
           {/* Copyright */}
           <div className="border-t border-white/10 mt-12 pt-8 text-center">
             <p className="text-gray-400 text-sm">
-              © 2024 PrimeStudio. All rights reserved. | Made with ❤️ in Bali
+              © 2026 PrimeStudio. All rights reserved. Made with ❤️ in Bali
             </p>
           </div>
         </div>

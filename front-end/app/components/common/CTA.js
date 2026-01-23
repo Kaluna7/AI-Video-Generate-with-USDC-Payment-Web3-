@@ -29,7 +29,7 @@ export default function CTA() {
                   From storyboard clips to hero images, everything runs through the same studio.
                   Connect, top up coins, pick a generator, and start shipping today.
                 </p>
-                <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
+                <div className="flex items-center justify-center lg:justify-start">
                   <button
                     onClick={() => openAuthModal('login')}
                     className="btn-3d px-8 py-4 bg-white text-purple-600 rounded-xl font-semibold text-lg hover:bg-gray-100 transition-all flex items-center gap-2"
@@ -38,10 +38,6 @@ export default function CTA() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                     Launch Studio
-                  </button>
-                  <button className="btn-3d px-8 py-4 glass-modern text-white rounded-xl font-semibold text-lg hover:bg-white/10 transition-all flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                    Explore public gallery
                   </button>
                 </div>
               </div>

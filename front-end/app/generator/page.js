@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AppHeader from '../components/generator/layout/AppHeader';
 import SidebarNav from '../components/generator/layout/SidebarNav';
 import HomePage from '../components/generator/pages/HomePage';
@@ -19,10 +19,10 @@ import { useAuthStore } from '../store/authStore';
 import { createTextToVideoJob, getCoinBalance, getVideoJob, createTextToImageJob, getImageJob, addTokenToVideoUrl, getApiBaseUrl } from '../lib/api';
 import { addVideoHistoryItem, formatRelativeTime, getVideoHistory, cleanupExpiredVideos } from '../lib/videoHistory';
 
-export default function GeneratorPage() {
+function GeneratorPageContent() {
   const router = useRouter();
-  const user = useAuthStore((state) => state.user);
-  const setUser = useAuthStore((state) => state.setUser);
+  const searchParams = useSearchParams();
+  const { user, coinBalance, setUser, setCoinBalance, openTopUpModal } = useAuthStore();
   const walletAddress = useAuthStore((state) => state.walletAddress);
   const [mounted, setMounted] = useState(false);
   const [currentView, setCurrentView] = useState('home'); // 'home', 'text-to-video', 'image-to-video'
@@ -61,6 +61,12 @@ export default function GeneratorPage() {
     currentViewRef.current = currentView;
   }, [prompt, activeTab, currentView]);
 
+  // Read URL params and set current view
+  useEffect(() => {
+    const view = searchParams.get('view') || 'home';
+    setCurrentView(view);
+  }, [searchParams]);
+
   // Mark as mounted to avoid hydration mismatch
   useEffect(() => {
     setMounted(true);
@@ -84,6 +90,13 @@ export default function GeneratorPage() {
             if (res.ok) {
               const userData = await res.json();
               setUser(userData);
+              // Fetch latest coin balance from backend
+              try {
+                const balanceData = await getCoinBalance();
+                setCoinBalance(balanceData.coins);
+              } catch (e) {
+                console.error('Failed to fetch coin balance:', e);
+              }
             } else {
               // Token invalid, redirect to home
               router.push('/');
@@ -129,8 +142,6 @@ export default function GeneratorPage() {
   const recentGenerations =
     getVideoHistory(historyUserId)
       .map((v) => ({ ...v, time: formatRelativeTime(v.createdAt) }));
-
-  const { coinBalance, setCoinBalance, openTopUpModal } = useAuthStore();
 
   // Keep UI coin balance in sync with backend (authoritative)
   useEffect(() => {
@@ -392,37 +403,35 @@ export default function GeneratorPage() {
   const cost = calculateCost();
 
   const handleNavigateToText = () => {
-    setCurrentView('text-to-video');
-    setActiveTab('text');
+    router.push('/generator?view=text-to-video');
   };
 
   const handleNavigateToImage = () => {
-    setCurrentView('image-to-video');
-    setActiveTab('image');
+    router.push('/generator?view=image-to-video');
   };
 
   const handleNavigateToTextImage = () => {
-    setCurrentView('text-to-image');
+    router.push('/generator?view=text-to-image');
   };
 
   const handleNavigateToImageImage = () => {
-    setCurrentView('image-to-image');
+    router.push('/generator?view=image-to-image');
   };
 
   const handleNavigateToHome = () => {
-    setCurrentView('home');
+    router.push('/generator');
   };
 
   const handleNavigateToInspiration = () => {
-    setCurrentView('inspiration');
+    router.push('/generator?view=inspiration');
   };
 
   const handleNavigateToMyVideos = () => {
-    setCurrentView('my-videos');
+    router.push('/generator?view=my-videos');
   };
 
   const handleNavigateToMyImages = () => {
-    setCurrentView('my-images');
+    router.push('/generator?view=my-images');
   };
 
   // Prevent hydration mismatch by showing loading state until mounted
@@ -618,6 +627,21 @@ export default function GeneratorPage() {
         isFree={false}
       />
     </div>
+  );
+}
+
+export default function GeneratorPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <p>Loading...</p>
+        </div>
+      </div>
+    }>
+      <GeneratorPageContent />
+    </Suspense>
   );
 }
 

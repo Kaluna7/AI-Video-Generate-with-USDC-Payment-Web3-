@@ -44,6 +44,19 @@ export default function Header() {
               <a
                 key={item.name}
                 href={item.href}
+                onClick={(e) => {
+                  e.preventDefault();
+                  const targetId = item.href.replace('#', '');
+                  const targetElement = document.getElementById(targetId);
+                  if (targetElement) {
+                    const headerHeight = 80; // Approximate header height
+                    const targetPosition = targetElement.offsetTop - headerHeight;
+                    window.scrollTo({
+                      top: targetPosition,
+                      behavior: 'smooth'
+                    });
+                  }
+                }}
                 className="px-4 py-2 text-gray-300 hover:text-white transition-all duration-300 relative group fade-in-up"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
@@ -92,7 +105,20 @@ export default function Header() {
               <a
                 key={item.name}
                 href={item.href}
-                onClick={() => setIsMenuOpen(false)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setIsMenuOpen(false);
+                  const targetId = item.href.replace('#', '');
+                  const targetElement = document.getElementById(targetId);
+                  if (targetElement) {
+                    const headerHeight = 80; // Approximate header height
+                    const targetPosition = targetElement.offsetTop - headerHeight;
+                    window.scrollTo({
+                      top: targetPosition,
+                      behavior: 'smooth'
+                    });
+                  }
+                }}
                 className="block px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-base text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-all duration-300"
               >
                 {item.name}

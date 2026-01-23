@@ -2,6 +2,8 @@ import os
 import base64
 import io
 import tempfile
+import secrets
+import hashlib
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
@@ -24,6 +26,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import Column, Integer, String, DateTime, Text, func
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
+import bcrypt
 from jose import JWTError, jwt
 import requests
 from urllib.parse import urlencode
@@ -60,9 +63,9 @@ print(f"[MAIN] Models imported. Base.metadata.tables: {list(Base.metadata.tables
 try:
     print("[MAIN] Attempting to initialize database tables...")
     init_db()
-    print("[MAIN] ✅ Database tables initialized (module level)")
+    print("[MAIN] Database tables initialized (module level)")
 except Exception as e:
-    print(f"[MAIN] ⚠️  Database init at module level failed (will retry in startup): {e}")
+    print(f"[MAIN] WARNING: Database init at module level failed (will retry in startup): {e}")
     # Don't raise - startup event will retry
 
 
@@ -70,9 +73,7 @@ except Exception as e:
 # Security configuration
 # ==============================
 
-# Gunakan bcrypt_sha256 agar tidak terkena limit 72 byte bawaan bcrypt.
-# bcrypt_sha256 akan melakukan SHA-256 dulu, lalu hasilnya di-hash dengan bcrypt.
-pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
+# Using pure bcrypt with SHA-256 pre-hashing for maximum reliability
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "CHANGE_ME_TO_A_RANDOM_SECRET")
 ALGORITHM = "HS256"
@@ -83,13 +84,28 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 def hash_password(password: str) -> str:
     """
-    Hash password menggunakan bcrypt_sha256 (tidak dibatasi 72 byte).
+    Hash password dengan pure bcrypt untuk maximum reliability.
+    SHA-256 dulu, lalu bcrypt - menghindari 72-byte limit sepenuhnya.
     """
-    return pwd_context.hash(password)
+    # Always hash with SHA-256 first (produces 64 chars, safe for bcrypt)
+    sha256_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+    # Use pure bcrypt for maximum reliability
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(sha256_hash.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    """
+    Verify password dengan pure bcrypt.
+    """
+    try:
+        # Hash plain password with SHA-256 first, then verify with bcrypt
+        sha256_hash = hashlib.sha256(plain_password.encode('utf-8')).hexdigest()
+        return bcrypt.checkpw(sha256_hash.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception:
+        return False
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -2429,36 +2445,91 @@ async def startup_event():
     Initialize database tables on application startup.
     This ensures all models are imported and registered before creating tables.
     
-    ✅ BENAR: Models sudah di-import di line 52 sebelum startup event ini
+    # Models imported at line 52 before this startup event
     """
-    # Debug: Verify DATABASE_URL
     import os
-    db_url_exists = bool(os.getenv("DATABASE_URL"))
+    from sqlalchemy import inspect
+    
+    print("=" * 60)
+    print("[STARTUP] Starting database initialization...")
+    print("=" * 60)
+    
+    # Debug: Verify DATABASE_URL
+    db_url = os.getenv("DATABASE_URL")
+    db_url_exists = bool(db_url)
     print(f"[STARTUP] DATABASE_URL exists: {db_url_exists}")
     
-    if not db_url_exists:
-        print("[STARTUP] ⚠️  WARNING: DATABASE_URL not found in environment!")
-        print("[STARTUP] ⚠️  Make sure you set DATABASE_URL in Railway Variables")
-        print("[STARTUP] ⚠️  Format: ${{ Postgres.DATABASE_URL }}")
+    if db_url:
+        # Mask sensitive parts for logging
+        if "@" in db_url:
+            masked_url = db_url.split("@")[-1]
+        else:
+            masked_url = db_url[:50] + "..." if len(db_url) > 50 else db_url
+        print(f"[STARTUP] DATABASE_URL: {masked_url}")
+        
+        # Check if PostgreSQL
+        if db_url.startswith("postgresql://") or db_url.startswith("postgres://"):
+            print("[STARTUP] Using PostgreSQL (Railway production)")
+        else:
+            print("[STARTUP] Using SQLite (development mode)")
+    else:
+        print("[STARTUP] WARNING: DATABASE_URL not found in environment!")
+        print("[STARTUP] WARNING: Make sure you set DATABASE_URL in Railway Variables")
+        print("[STARTUP] WARNING: Format: ${{ Postgres.DATABASE_URL }}")
     
     # Debug: Verify models are imported
     print(f"[STARTUP] Models imported: User={User is not None}, UserCoinBalance={UserCoinBalance is not None}")
     print(f"[STARTUP] Found {len(Base.metadata.tables)} table(s) to create: {list(Base.metadata.tables.keys())}")
     
     if len(Base.metadata.tables) == 0:
-        print("[STARTUP] ❌ ERROR: No tables found in Base.metadata!")
-        print("[STARTUP] ❌ This means models were not imported correctly")
+        print("[STARTUP] ERROR: No tables found in Base.metadata!")
+        print("[STARTUP] ERROR: This means models were not imported correctly")
+        print("[STARTUP] ERROR: Check if models.py is imported correctly")
         return
     
+    # Try to connect and verify database
     try:
-        init_db()
-        print("[STARTUP] ✅ Database initialization complete")
+        print("[STARTUP] Testing database connection...")
+        with engine.connect() as conn:
+            print("[STARTUP] Database connection successful")
     except Exception as e:
-        print(f"[STARTUP] ❌ Database initialization failed: {e}")
+        print(f"[STARTUP] Database connection failed: {e}")
         import traceback
         traceback.print_exc()
+        print("[STARTUP] WARNING: App will continue, but database operations may fail")
+        return
+    
+    # Create tables
+    try:
+        print("[STARTUP] Creating tables if they don't exist...")
+        init_db()
+        print("[STARTUP] Database initialization complete")
+        
+        # Verify tables were created
+        print("[STARTUP] Verifying tables were created...")
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        print(f"[STARTUP] Found {len(existing_tables)} table(s) in database: {existing_tables}")
+        
+        expected_tables = list(Base.metadata.tables.keys())
+        missing_tables = [t for t in expected_tables if t not in existing_tables]
+        
+        if missing_tables:
+            print(f"[STARTUP] WARNING: Some tables are missing: {missing_tables}")
+        else:
+            print("[STARTUP] All expected tables exist in database")
+            
+    except Exception as e:
+        print(f"[STARTUP] Database initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
+        print("[STARTUP] WARNING: You can manually initialize using: POST /admin/db/init")
         # Don't raise - let app start even if DB init fails (for debugging)
         # In production, you might want to raise here
+    
+    print("=" * 60)
+    print("[STARTUP] Startup complete")
+    print("=" * 60)
 
 
 # CORS configuration - MUST be added before routes
@@ -2492,6 +2563,30 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"message": "Web3 Auth API is running"}
+
+
+@app.get("/debug/google-oauth")
+def debug_google_oauth():
+    """
+    Debug endpoint to check Google OAuth configuration.
+    Shows redirect URI that will be sent to Google.
+    """
+    import os
+    backend_url = os.getenv("BACKEND_URL", "http://localhost:8001")
+    google_redirect_uri = os.getenv("GOOGLE_REDIRECT_URI")
+    
+    if not google_redirect_uri:
+        # Build from BACKEND_URL (same logic as _google_redirect_uri)
+        google_redirect_uri = f"{backend_url.rstrip('/')}/auth/google/callback"
+    
+    return {
+        "backend_url": backend_url,
+        "google_redirect_uri": google_redirect_uri,
+        "google_client_id_set": bool(os.getenv("GOOGLE_CLIENT_ID")),
+        "google_client_secret_set": bool(os.getenv("GOOGLE_CLIENT_SECRET")),
+        "frontend_url": os.getenv("FRONTEND_URL", "http://localhost:3000"),
+        "message": "Copy the 'google_redirect_uri' value and add it to Google Cloud Console → OAuth 2.0 Client ID → Authorized redirect URIs"
+    }
 
 
 @app.get("/debug/env")
@@ -2590,23 +2685,50 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
         if existing:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
+        # Hash password with error handling
+        try:
+            hashed_pw = hash_password(user_in.password)
+        except Exception as hash_error:
+            error_msg = str(hash_error)
+            print(f"[AUTH] ❌ Password hashing failed: {hash_error}")
+            import traceback
+            traceback.print_exc()
+            
+            # Provide more specific error message
+            if "72" in error_msg or "byte" in error_msg.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Password is too long. Maximum 72 characters allowed.",
+                )
+            else:
+                # Other errors (e.g., bcrypt not installed, configuration issue)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Password hashing failed. Please contact support. Error: {error_msg[:100]}",
+                )
+        
         user = User(
             email=normalized_email,
             full_name=user_in.full_name,
-            hashed_password=hash_password(user_in.password),
+            hashed_password=hashed_pw,
         )
         db.add(user)
         db.commit()
         db.refresh(user)
+        print(f"[AUTH] ✅ User registered: {normalized_email} (ID: {user.id})")
         return user
     except HTTPException:
         # re-throw HTTPExceptions unchanged
         raise
     except Exception as e:
         # Untuk debugging: kirim pesan error ke client (sementara)
+        error_msg = str(e)
+        print(f"[AUTH] ❌ Registration error: {error_msg}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Registration failed: {e}",
+            detail=f"Registration failed: {error_msg}",
         )
 
 
@@ -2686,13 +2808,41 @@ def google_callback(code: Optional[str] = None, state: Optional[str] = None, err
     normalized_email = email.strip().lower()
     user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
     if not user:
-        # Create user with a random password (so schema stays consistent).
-        # If you want to allow password login later, user can use reset-password.
-        random_pw = str(uuid4())
-        user = User(email=normalized_email, full_name=full_name, hashed_password=hash_password(random_pw))
+        # Create user with a dummy password for Google OAuth users.
+        # Google OAuth users don't need password - they login via OAuth.
+        # Use a short random password (32 chars) to avoid bcrypt 72-byte limit.
+        # Use a very short dummy password (16 chars = 16 bytes) to ensure it works with bcrypt
+        # This is safe because Google OAuth users don't need password - they login via OAuth
+        dummy_password = secrets.token_hex(8)  # 16 characters = 16 bytes, definitely safe for bcrypt
+        try:
+            hashed_pw = hash_password(dummy_password)
+        except Exception as hash_error:
+            error_msg = str(hash_error)
+            error_type = type(hash_error).__name__
+            print(f"[Google OAuth] ❌ Password hashing failed:")
+            print(f"  - Error type: {error_type}")
+            print(f"  - Error message: {error_msg}")
+            print(f"  - Dummy password length: {len(dummy_password)} chars, {len(dummy_password.encode('utf-8'))} bytes")
+            import traceback
+            traceback.print_exc()
+            
+            # Provide more specific error message
+            if "72" in error_msg or "byte" in error_msg.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to create user: Password hashing error (password too long). This should not happen with dummy password.",
+                )
+            else:
+                # Other errors (e.g., bcrypt not installed, configuration issue)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to create user: Password hashing error. Please check backend logs. Error: {error_type}: {error_msg[:100]}",
+                )
+        user = User(email=normalized_email, full_name=full_name, hashed_password=hashed_pw)
         db.add(user)
         db.commit()
         db.refresh(user)
+        print(f"[Google OAuth] ✅ Created new user: {normalized_email} (ID: {user.id})")
     else:
         # Keep name in sync if it was empty
         if full_name and not user.full_name:

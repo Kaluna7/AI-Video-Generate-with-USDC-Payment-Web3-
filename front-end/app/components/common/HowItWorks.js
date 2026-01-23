@@ -163,7 +163,7 @@ export default function HowItWorks() {
     : { type: 'image', src: '/assets/images/plane.png' };
 
   return (
-    <section ref={sectionRef} className="py-24 px-4 sm:px-6 lg:px-8 relative overflow-hidden" style={{ backgroundColor: 'transparent' }}>
+    <section id="how-it-works" ref={sectionRef} className="py-24 px-4 sm:px-6 lg:px-8 relative overflow-hidden" style={{ backgroundColor: 'transparent' }}>
       {/* Fullscreen Background Video/Image - berubah sesuai track */}
       <div className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 0 }}>
         {backgroundMedia.type === 'video' ? (

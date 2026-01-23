@@ -15,7 +15,7 @@ except Exception:
     pass
 
 # Get DATABASE_URL from environment
-# ✅ BENAR: Menggunakan os.getenv() untuk membaca Railway ENV
+# Correct: Using os.getenv() to read Railway ENV
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Debug: Check if DATABASE_URL exists
@@ -27,30 +27,35 @@ if DATABASE_URL:
     
     # Validate PostgreSQL format for Railway
     if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
-        print(f"[DB] ✅ Using PostgreSQL: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else '***'}")
+        print(f"[DB] Using PostgreSQL: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else '***'}")
     else:
-        print(f"[DB] ⚠️  DATABASE_URL format: {DATABASE_URL[:20]}... (expected postgresql://)")
+        # Safely print first 20 characters, handling Unicode issues
+        try:
+            preview = DATABASE_URL[:20]
+            print(f"[DB] WARNING: DATABASE_URL format: {preview}... (expected postgresql://)")
+        except UnicodeEncodeError:
+            print(f"[DB] WARNING: DATABASE_URL format contains unicode characters (expected postgresql://)")
 else:
     # Default to SQLite for development (local only)
     DATABASE_URL = "sqlite:///./dev.db"
-    print(f"[DB] ⚠️  DATABASE_URL not set, using default SQLite: {DATABASE_URL}")
-    print(f"[DB] ⚠️  For Railway production, set DATABASE_URL=${{{{ Postgres.DATABASE_URL }}}}")
+    print(f"[DB] WARNING: DATABASE_URL not set, using default SQLite: {DATABASE_URL}")
+    print(f"[DB] WARNING: For Railway production, set DATABASE_URL=${{{{ Postgres.DATABASE_URL }}}}")
 
 # Create engine with connection pooling for production (PostgreSQL)
 # For PostgreSQL, use pool_pre_ping to handle connection drops
 if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
     # PostgreSQL for Railway production
-    print("[DB] 🔵 Configuring PostgreSQL engine with connection pooling...")
+    print("[DB] Configuring PostgreSQL engine with connection pooling...")
     engine = create_engine(
         DATABASE_URL,
         pool_pre_ping=True,  # Verify connections before using
         pool_size=5,
         max_overflow=10
     )
-    print("[DB] ✅ PostgreSQL engine ready")
+    print("[DB] PostgreSQL engine ready")
 else:
     # SQLite for local development (fallback)
-    print("[DB] 🟡 Using SQLite engine (development mode)")
+    print("[DB] Using SQLite engine (development mode)")
     engine = create_engine(DATABASE_URL)
 
 # Create sessionmaker
@@ -84,9 +89,9 @@ def init_db():
     print(f"[DB] Found {len(Base.metadata.tables)} table(s) to create: {list(Base.metadata.tables.keys())}")
     try:
         Base.metadata.create_all(bind=engine)
-        print("[DB] ✅ Tables ready")
+        print("[DB] Tables ready")
     except Exception as e:
-        print(f"[DB] ❌ Error creating tables: {e}")
+        print(f"[DB] Error creating tables: {e}")
         import traceback
         traceback.print_exc()
         raise

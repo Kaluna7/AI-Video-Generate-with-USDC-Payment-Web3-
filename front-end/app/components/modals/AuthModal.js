@@ -7,11 +7,11 @@ import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
 import { loginSchema, registerSchema } from '../../lib/validations';
-import { registerUser, loginUser, getApiBaseUrl } from '../../lib/api';
+import { registerUser, loginUser, getApiBaseUrl, getCoinBalance } from '../../lib/api';
 
 export default function AuthModal() {
   const router = useRouter();
-  const { isAuthModalOpen, closeAuthModal, activeTab, setActiveTab, setUser } = useAuthStore();
+  const { isAuthModalOpen, closeAuthModal, activeTab, setActiveTab, setUser, setCoinBalance } = useAuthStore();
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [forgotPasswordStep, setForgotPasswordStep] = useState(null); // null | 'email' | 'code' | 'password'
@@ -85,13 +85,35 @@ export default function AuthModal() {
           if (res.ok) {
             const user = await res.json();
             setUser(user);
+            // Fetch latest coin balance from backend
+            try {
+              const balanceData = await getCoinBalance();
+              setCoinBalance(balanceData.coins);
+            } catch (e) {
+              console.error('Failed to fetch coin balance:', e);
+              // Balance will remain 0 or from localStorage
+            }
           } else if (result?.user) {
             // Fallback to user from login response if /auth/me fails
             setUser(result.user);
+            // Still try to fetch balance
+            try {
+              const balanceData = await getCoinBalance();
+              setCoinBalance(balanceData.coins);
+            } catch (e) {
+              console.error('Failed to fetch coin balance:', e);
+            }
           }
         } else if (result?.user) {
           // Fallback to user from login response
           setUser(result.user);
+          // Fetch latest coin balance from backend
+          try {
+            const balanceData = await getCoinBalance();
+            setCoinBalance(balanceData.coins);
+          } catch (e) {
+            console.error('Failed to fetch coin balance:', e);
+          }
         }
       } catch (e) {
         console.error('Failed to fetch user info:', e);

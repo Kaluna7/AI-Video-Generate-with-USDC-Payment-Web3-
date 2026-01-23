@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuthStore } from '../../../store/authStore';
 import { formatRelativeTime, getVideoHistory, deleteVideoHistoryItem, cleanupExpiredVideos, isVideoExpired, getDaysUntilExpiry } from '../../../lib/videoHistory';
 import { addTokenToVideoUrl, getAuthToken } from '../../../lib/api';
+import dynamic from 'next/dynamic';
 
 export default function MyVideosPage() {
   const [activeTab, setActiveTab] = useState('text');
@@ -16,11 +17,17 @@ export default function MyVideosPage() {
   const [expandedModalDescription, setExpandedModalDescription] = useState(false);
   const [videoError, setVideoError] = useState(null);
   const [videoLoading, setVideoLoading] = useState(true);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // SSR: Hydration-safe rendering
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   // Local history is stored per "account". Prefer app user id, fall back to connected wallet, else anonymous.
   const historyUserId = user?.id || walletAddress || 'anonymous';
 
-  // Scroll to top on mount and cleanup expired videos
+  // SSR: Scroll to top on mount and cleanup expired videos
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     // Cleanup expired videos on page load
@@ -39,19 +46,20 @@ export default function MyVideosPage() {
     };
   }, []);
 
-  const filtered = (() => {
+  // SSR: Memoized filtered videos for performance
+  const filtered = useMemo(() => {
     // touch historyTick so UI refreshes when history changes
     void historyTick;
     const type = activeTab === 'text' ? 'text' : 'image';
     const history = getVideoHistory(historyUserId);
-    
+
     // Filter out expired videos
     const now = Date.now();
     const activeHistory = history.filter(v => {
       if (!v.expiresAt) return true; // Keep videos without expiry (backward compatibility)
       return v.expiresAt > now;
     });
-    
+
     const mapped = activeHistory
       .map((v) => {
         const daysUntilExpiry = getDaysUntilExpiry(v);
@@ -65,14 +73,14 @@ export default function MyVideosPage() {
         };
       })
       .filter((v) => (v.type || 'text') === type);
-    
+
     // Debug: log video count
     if (typeof window !== 'undefined' && history.length > 0) {
       console.log('Video history:', history.length, 'Active:', activeHistory.length, 'Filtered:', mapped.length, 'Type:', type);
     }
-    
+
     return mapped;
-  })();
+  }, [historyTick, activeTab, historyUserId]);
 
   const textVideos = filtered.filter(v => (v.type || 'text') === 'text');
   const imageVideos = filtered.filter(v => (v.type || 'text') === 'image');
@@ -138,6 +146,15 @@ export default function MyVideosPage() {
     setVideoError(null);
     setVideoLoading(true);
     setExpandedModalDescription(false);
+
+    // SSR: Preload video when modal opens for better UX
+    if (typeof window !== 'undefined' && video.videoUrl) {
+      // Create a temporary video element to preload
+      const preloadVideo = document.createElement('video');
+      preloadVideo.src = addTokenToVideoUrl(video.videoUrl);
+      preloadVideo.preload = 'metadata';
+      preloadVideo.load();
+    }
   };
 
   const handleCloseVideoModal = () => {
@@ -308,7 +325,7 @@ export default function MyVideosPage() {
         </button>
       </div>
 
-      {/* Videos Grid */}
+      {/* SSR: Videos Grid with loading optimization */}
       {filtered.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {filtered.map((video) => (
@@ -318,7 +335,7 @@ export default function MyVideosPage() {
             >
               {/* Thumbnail */}
               <div className="aspect-video bg-linear-to-br from-purple-500/30 via-blue-500/30 to-cyan-500/30 relative overflow-hidden cursor-pointer group/thumbnail" onClick={() => handlePlayVideo(video)}>
-                {/* Video thumbnail preview */}
+                {/* SSR: Video thumbnail preview with optimized loading */}
                 {video.videoUrl ? (
                   <video
                     className="absolute inset-0 w-full h-full object-cover"
@@ -327,11 +344,14 @@ export default function MyVideosPage() {
                     loop
                     playsInline
                     preload="metadata"
+                    loading="lazy"
                     onError={(e) => {
                       // Silently handle thumbnail errors - don't log to avoid console spam
                       // Thumbnail errors are not critical, the video might be expired or inaccessible
                       e.target.style.display = 'none';
                     }}
+                    // SSR: Add intersection observer for performance
+                    style={{ contentVisibility: 'auto' }}
                   />
                 ) : (
                   /* Placeholder gradient background - fallback when no video URL */
@@ -442,8 +462,8 @@ export default function MyVideosPage() {
         </div>
       )}
 
-      {/* Video Modal */}
-      {isVideoModalOpen && selectedVideo && (
+      {/* SSR: Video Modal - Only render on client */}
+      {isHydrated && isVideoModalOpen && selectedVideo && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={handleCloseVideoModal}
@@ -505,13 +525,15 @@ export default function MyVideosPage() {
                     </div>
                   )}
                   <video
-                    key={selectedVideo.videoUrl} // Force re-render on video change
+                    key={`${selectedVideo.videoUrl}-${Date.now()}`} // Force re-render on video change with timestamp
                     className="w-full h-full object-contain"
                     src={addTokenToVideoUrl(selectedVideo.videoUrl)}
                     controls
                     autoPlay
                     playsInline
                     onLoadStart={() => {
+                      console.log('Video load start - URL:', addTokenToVideoUrl(selectedVideo.videoUrl));
+                      console.log('Auth token available:', !!getAuthToken());
                       setVideoLoading(true);
                       setVideoError(null);
                     }}
@@ -522,12 +544,20 @@ export default function MyVideosPage() {
                     onError={(e) => {
                       setVideoLoading(false);
                       const video = e.target;
+
+                      // Debug: Log the actual error object
+                      console.error('Video error event:', e);
+                      console.error('Video element error:', video?.error);
+                      console.error('Video src:', video?.src);
+
                       let errorMsg = 'Failed to load video';
                       let errorCode = null;
-                      
+
                       try {
                         if (video && video.error) {
                           errorCode = video.error.code;
+                          console.error('Video error code:', errorCode);
+
                           switch (errorCode) {
                             case video.error.MEDIA_ERR_ABORTED:
                               errorMsg = 'Video loading was aborted';
@@ -550,35 +580,31 @@ export default function MyVideosPage() {
                             errorMsg = 'No video source available. The video URL may be invalid.';
                           } else if (video && video.networkState === video.NETWORK_EMPTY) {
                             errorMsg = 'Video source is empty.';
+                          } else if (video && video.networkState === video.NETWORK_LOADING) {
+                            errorMsg = 'Video is still loading. Please wait.';
                           } else {
                             errorMsg = 'Failed to load video. Please try again or check if the video is still available.';
                           }
                         }
+
+                        // Check if token is missing
+                        const token = getAuthToken();
+                        if (!token) {
+                          errorMsg = 'Authentication token missing. Please login again.';
+                        }
+
+                        // Check if URL is valid
+                        if (!video?.src || video.src === '') {
+                          errorMsg = 'Video URL is empty or invalid.';
+                        }
+
                       } catch (err) {
-                        // Fallback error message if error handling fails
-                        errorMsg = 'An error occurred while loading the video.';
                         console.error('Error handling video error:', err);
+                        errorMsg = 'An unexpected error occurred while loading the video.';
                       }
-                      
+
+                      console.error('Final error message:', errorMsg);
                       setVideoError(errorMsg);
-                      
-                      // Only log if we have useful information (avoid logging empty errors)
-                      if (errorCode !== null) {
-                        console.error('Video error:', {
-                          code: errorCode,
-                          message: errorMsg,
-                          src: video?.src ? video.src.substring(0, 100) + '...' : null, // Truncate long URLs
-                          networkState: video?.networkState,
-                          readyState: video?.readyState
-                        });
-                      } else if (video && video.src && video.src !== '' && errorMsg && errorMsg !== 'Failed to load video') {
-                        // Only log if we have a meaningful error message and valid source
-                        console.error('Video error: Unable to load video', {
-                          message: errorMsg,
-                          src: video.src.substring(0, 100) + '...' // Truncate long URLs
-                        });
-                      }
-                      // Don't log empty errors or errors without useful information
                     }}
                   />
                 </>

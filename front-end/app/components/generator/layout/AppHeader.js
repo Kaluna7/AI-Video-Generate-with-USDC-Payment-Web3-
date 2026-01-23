@@ -57,43 +57,76 @@ function AppHeaderContent() {
 
   // Navigation handlers for mobile sidebar
   const handleNavigateToHome = () => {
-    router.push('/generator');
-    setIsMenuOpen(false);
+    try {
+      router.push('/generator');
+      setIsMenuOpen(false);
+    } catch (error) {
+      // Fallback: use window.location for mobile
+      window.location.href = '/generator';
+    }
   };
 
   const handleNavigateToInspiration = () => {
-    router.push('/generator?view=inspiration');
-    setIsMenuOpen(false);
+    try {
+      router.push('/generator?view=inspiration');
+      setIsMenuOpen(false);
+    } catch (error) {
+      window.location.href = '/generator?view=inspiration';
+    }
   };
 
   const handleNavigateToMyVideos = () => {
-    router.push('/generator?view=my-videos');
-    setIsMenuOpen(false);
+    try {
+      router.push('/generator?view=my-videos');
+      setIsMenuOpen(false);
+    } catch (error) {
+      window.location.href = '/generator?view=my-videos';
+    }
   };
 
   const handleNavigateToMyImages = () => {
-    router.push('/generator?view=my-images');
-    setIsMenuOpen(false);
+    try {
+      router.push('/generator?view=my-images');
+      setIsMenuOpen(false);
+    } catch (error) {
+      window.location.href = '/generator?view=my-images';
+    }
   };
 
   const handleNavigateToText = () => {
-    router.push('/generator?view=text-to-video');
-    setIsMenuOpen(false);
+    try {
+      router.push('/generator?view=text-to-video');
+      setIsMenuOpen(false);
+    } catch (error) {
+      window.location.href = '/generator?view=text-to-video';
+    }
   };
 
   const handleNavigateToImage = () => {
-    router.push('/generator?view=image-to-video');
-    setIsMenuOpen(false);
+    try {
+      router.push('/generator?view=image-to-video');
+      setIsMenuOpen(false);
+    } catch (error) {
+      window.location.href = '/generator?view=image-to-video';
+    }
   };
 
   const handleNavigateToTextImage = () => {
-    router.push('/generator?view=text-to-image');
-    setIsMenuOpen(false);
+    try {
+      router.push('/generator?view=text-to-image');
+      setIsMenuOpen(false);
+    } catch (error) {
+      window.location.href = '/generator?view=text-to-image';
+    }
   };
 
   const handleNavigateToImageImage = () => {
-    router.push('/generator?view=image-to-image');
-    setIsMenuOpen(false);
+    try {
+      router.push('/generator?view=image-to-image');
+      setIsMenuOpen(false);
+    } catch (error) {
+      window.location.href = '/generator?view=image-to-image';
+    }
   };
 
   const handleLogout = () => {
@@ -307,7 +340,7 @@ function AppHeaderContent() {
               <span className="text-[10px] sm:text-xs text-purple-300 hidden md:inline">Top Up</span>
             </button>
             {/* Desktop: Wallet & Faucet */}
-            <div className="hidden md:flex items-center gap-2 lg:gap-3">
+            <div className="hidden lg:flex items-center gap-2 lg:gap-3">
               {/* Wallet Connection */}
               {walletAddress ? (
                 <div
@@ -434,7 +467,7 @@ function AppHeaderContent() {
             {/* Mobile: Hamburger Menu Button */}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="md:hidden p-2 text-gray-300 hover:text-white transition-colors"
+              className="lg:hidden p-2 text-gray-300 hover:text-white transition-colors"
               aria-label="Toggle menu"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -451,14 +484,18 @@ function AppHeaderContent() {
 
       {/* Mobile Menu Dropdown */}
         {isMenuOpen && (
-          <div className="md:hidden mt-3 pb-3 border-t border-gray-800 pt-3 animate-in slide-in-from-top-2 duration-200 max-h-[calc(100vh-5rem)] overflow-y-auto">
+          <div className="lg:hidden mt-3 pb-3 border-t border-gray-800 pt-3 animate-in slide-in-from-top-2 duration-200 max-h-[calc(100vh-5rem)] overflow-y-auto">
             <div className="space-y-3 px-4">
               {/* Navigation Items */}
               <div className="space-y-1">
                 {navItems.map((item) => (
                   <button
                     key={item.label}
-                    onClick={item.onClick}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      item.onClick();
+                    }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
                       currentView === item.view
                         ? 'text-white bg-gray-800'
@@ -479,7 +516,11 @@ function AppHeaderContent() {
                 {aiItems.map((item) => (
                   <button
                     key={item.label}
-                    onClick={item.onClick}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      item.onClick();
+                    }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
                       currentView === item.view
                         ? 'text-white bg-gray-800'
@@ -500,7 +541,11 @@ function AppHeaderContent() {
                 {imageItems.map((item) => (
                   <button
                     key={item.label}
-                    onClick={item.onClick}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      item.onClick();
+                    }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
                       currentView === item.view
                         ? 'text-white bg-gray-800'
