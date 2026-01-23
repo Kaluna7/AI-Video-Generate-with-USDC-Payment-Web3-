@@ -7,7 +7,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
 import { loginSchema, registerSchema } from '../../lib/validations';
-import { registerUser, loginUser } from '../../lib/api';
+import { registerUser, loginUser, getApiBaseUrl } from '../../lib/api';
 
 export default function AuthModal() {
   const router = useRouter();
@@ -79,8 +79,7 @@ export default function AuthModal() {
       try {
         const token = result?.access_token || localStorage.getItem('access_token');
         if (token) {
-          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
-          const res = await fetch(`${API_BASE_URL}/auth/me`, {
+          const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (res.ok) {
@@ -116,8 +115,7 @@ export default function AuthModal() {
   const requestResetMutation = useMutation({
     mutationFn: async (email) => {
       console.log('Sending forgot password request for:', email);
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
-      const url = `${API_BASE_URL}/auth/forgot-password`;
+      const url = `${getApiBaseUrl()}/auth/forgot-password`;
       console.log('Request URL:', url);
 
       const res = await fetch(url, {
@@ -157,8 +155,7 @@ export default function AuthModal() {
   const verifyCodeMutation = useMutation({
     mutationFn: async ({ email, code }) => {
       console.log('Verifying code for:', email, 'code:', code);
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
-      const url = `${API_BASE_URL}/auth/verify-reset-code`;
+      const url = `${getApiBaseUrl()}/auth/verify-reset-code`;
       console.log('Request URL:', url);
 
       const res = await fetch(url, {
@@ -197,8 +194,7 @@ export default function AuthModal() {
   const resetPasswordMutation = useMutation({
     mutationFn: async ({ email, code, password }) => {
       console.log('Resetting password for:', email);
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
-      const url = `${API_BASE_URL}/auth/reset-password-with-code`;
+      const url = `${getApiBaseUrl()}/auth/reset-password-with-code`;
       console.log('Request URL:', url);
 
       const res = await fetch(url, {
@@ -351,7 +347,7 @@ export default function AuthModal() {
           <button
             type="button"
             onClick={() => {
-              const backend = 'http://localhost:8001';
+              const backend = getApiBaseUrl();
               const redirectTo = `${window.location.origin}/auth/google`;
               window.location.href = `${backend}/auth/google/login?redirect_to=${encodeURIComponent(redirectTo)}`;
             }}

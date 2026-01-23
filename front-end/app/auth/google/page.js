@@ -12,20 +12,8 @@ const setCookie = (name, value, days = 1) => {
   document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`;
 };
 
-// Get API base URL
-const getApiBaseUrl = () => {
-  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:8001';
-    }
-    return `http://${hostname}:8001`;
-  }
-  return 'http://localhost:8001';
-};
+// Import API base URL function
+import { getApiBaseUrl } from '../lib/api';
 
 function GoogleAuthCallbackContent() {
   const router = useRouter();

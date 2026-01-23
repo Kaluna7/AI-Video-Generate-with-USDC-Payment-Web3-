@@ -16,7 +16,7 @@ import TextToVideoSection from '../components/generator/sections/TextToVideoSect
 import ImageToVideoSection from '../components/generator/sections/ImageToVideoSection';
 import GenerateConfirmModal from '../components/generator/modals/GenerateConfirmModal';
 import { useAuthStore } from '../store/authStore';
-import { createTextToVideoJob, getCoinBalance, getVideoJob, createTextToImageJob, getImageJob, addTokenToVideoUrl } from '../lib/api';
+import { createTextToVideoJob, getCoinBalance, getVideoJob, createTextToImageJob, getImageJob, addTokenToVideoUrl, getApiBaseUrl } from '../lib/api';
 import { addVideoHistoryItem, formatRelativeTime, getVideoHistory, cleanupExpiredVideos } from '../lib/videoHistory';
 
 export default function GeneratorPage() {
@@ -78,8 +78,7 @@ export default function GeneratorPage() {
         
         if (token) {
           try {
-            const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
-            const res = await fetch(`${API_BASE_URL}/auth/me`, {
+            const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {

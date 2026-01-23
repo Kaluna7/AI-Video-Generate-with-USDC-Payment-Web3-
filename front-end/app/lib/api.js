@@ -1,29 +1,25 @@
 'use client';
 
-// Determine API base URL dynamically
-// Use environment variable if set, otherwise detect from current hostname
-const getApiBaseUrl = () => {
-  // Check for environment variable (for Next.js, use NEXT_PUBLIC_ prefix)
-  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) {
+/**
+ * Get API base URL for fetch requests
+ * Priority:
+ * 1. NEXT_PUBLIC_API_URL environment variable (for Vercel/Railway production)
+ * 2. localhost:8001 (for local development)
+ * 
+ * Usage: fetch(`${getApiBaseUrl()}/api/endpoint`)
+ */
+export const getApiBaseUrl = () => {
+  // Use environment variable if set (for production: Vercel + Railway)
+  if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
   
-  // If running in browser, use same hostname as frontend
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    // If accessing via localhost or 127.0.0.1, use localhost for backend
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:8001';
-    }
-    // Otherwise, use same hostname with backend port
-    return `http://${hostname}:8001`;
-  }
-  
-  // Default fallback
+  // Fallback to localhost for development
   return 'http://localhost:8001';
 };
 
-const API_BASE_URL = getApiBaseUrl();
+// Export constant for backward compatibility
+export const API_BASE_URL = getApiBaseUrl();
 
 // Cookie helper functions
 const setCookie = (name, value, days = 1) => {
