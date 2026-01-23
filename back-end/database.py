@@ -27,8 +27,18 @@ if not DATABASE_URL:
 else:
     print(f"[DB] Using database: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
 
-# Create engine
-engine = create_engine(DATABASE_URL)
+# Create engine with connection pooling for production (PostgreSQL)
+# For PostgreSQL, use pool_pre_ping to handle connection drops
+if DATABASE_URL.startswith("postgresql"):
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,  # Verify connections before using
+        pool_size=5,
+        max_overflow=10
+    )
+else:
+    # SQLite doesn't need connection pooling
+    engine = create_engine(DATABASE_URL)
 
 # Create sessionmaker
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -58,11 +68,14 @@ def init_db():
     Safe to call multiple times - won't recreate existing tables.
     """
     print("[DB] Creating tables if they don't exist...")
+    print(f"[DB] Found {len(Base.metadata.tables)} table(s) to create: {list(Base.metadata.tables.keys())}")
     try:
         Base.metadata.create_all(bind=engine)
         print("[DB] ✅ Tables ready")
     except Exception as e:
         print(f"[DB] ❌ Error creating tables: {e}")
+        import traceback
+        traceback.print_exc()
         raise
 
 

@@ -44,14 +44,19 @@ if load_dotenv:
 # ==============================
 # Database configuration
 # ==============================
-# Import database configuration and models
+# Import database configuration first
 from database import get_db, engine, Base, init_db
+
+# Import all models - this registers them with Base.metadata
 from models import User, UserCoinBalance, CoinTopUpTx, StoredVideo
 
 # Initialize database - create all tables
 # This must be called AFTER all models are imported
 # Safe to call multiple times - won't recreate existing tables
+print("[MAIN] Initializing database...")
+print(f"[MAIN] Base.metadata.tables: {list(Base.metadata.tables.keys())}")
 init_db()
+print("[MAIN] Database initialization complete")
 
 
 # ==============================
