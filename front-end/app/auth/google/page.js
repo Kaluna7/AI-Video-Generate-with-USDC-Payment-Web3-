@@ -13,7 +13,7 @@ const setCookie = (name, value, days = 1) => {
 };
 
 // Import API base URL function
-import { getApiBaseUrl } from '../lib/api';
+import { getApiBaseUrl } from '../../lib/api';
 
 function GoogleAuthCallbackContent() {
   const router = useRouter();
