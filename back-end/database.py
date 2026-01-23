@@ -15,17 +15,20 @@ except Exception:
     pass
 
 # Get DATABASE_URL from environment
+# ✅ BENAR: Menggunakan os.getenv() untuk membaca Railway ENV
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Debug: Check if DATABASE_URL exists
+print(f"[DB] DATABASE_URL exists: {bool(DATABASE_URL)}")
+
 if DATABASE_URL:
     # Normalize common .env issues: surrounding quotes or trailing whitespace
     DATABASE_URL = DATABASE_URL.strip().strip('"').strip("'")
-
-if not DATABASE_URL:
+    print(f"[DB] Using database: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else '***'}")
+else:
     # Default to SQLite for development
     DATABASE_URL = "sqlite:///./dev.db"
-    print(f"[DB] Using default SQLite database: {DATABASE_URL}")
-else:
-    print(f"[DB] Using database: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
+    print(f"[DB] ⚠️  DATABASE_URL not set, using default SQLite: {DATABASE_URL}")
 
 # Create engine with connection pooling for production (PostgreSQL)
 # For PostgreSQL, use pool_pre_ping to handle connection drops

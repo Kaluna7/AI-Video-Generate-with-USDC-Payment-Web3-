@@ -127,7 +127,44 @@ Cek logs untuk:
 - `[DB] Found 4 table(s) to create: ['users', 'user_coin_balances', 'coin_topup_txs', 'stored_videos']`
 - `[DB] ✅ Tables ready`
 
-### 7. Verify Tables Created
+### 7. Manual Database Initialization (Fallback)
+
+Jika auto-init gagal, gunakan endpoint manual:
+
+```bash
+# Call manual init endpoint
+curl -X POST https://your-backend.railway.app/admin/db/init
+```
+
+Ini akan create tables secara manual. Response:
+```json
+{
+  "success": true,
+  "message": "Database tables initialized successfully",
+  "tables": ["users", "user_coin_balances", "coin_topup_txs", "stored_videos"]
+}
+```
+
+### 8. Test Database dengan Script
+
+Di Railway, jalankan test script:
+
+```bash
+# Via Railway CLI
+railway run python test_db.py
+
+# Atau via Railway Dashboard → Shell
+python test_db.py
+```
+
+Script ini akan:
+- Test database connection
+- Verify models imported
+- Check tables registered
+- Create tables
+- Verify tables exist
+
+### 9. Verify Tables Created
 
 Setelah deploy, test dengan:
 

@@ -2412,9 +2412,28 @@ async def startup_event():
     """
     Initialize database tables on application startup.
     This ensures all models are imported and registered before creating tables.
+    
+    ✅ BENAR: Models sudah di-import di line 52 sebelum startup event ini
     """
-    print("[STARTUP] Initializing database...")
+    # Debug: Verify DATABASE_URL
+    import os
+    db_url_exists = bool(os.getenv("DATABASE_URL"))
+    print(f"[STARTUP] DATABASE_URL exists: {db_url_exists}")
+    
+    if not db_url_exists:
+        print("[STARTUP] ⚠️  WARNING: DATABASE_URL not found in environment!")
+        print("[STARTUP] ⚠️  Make sure you set DATABASE_URL in Railway Variables")
+        print("[STARTUP] ⚠️  Format: ${{ Postgres.DATABASE_URL }}")
+    
+    # Debug: Verify models are imported
+    print(f"[STARTUP] Models imported: User={User is not None}, UserCoinBalance={UserCoinBalance is not None}")
     print(f"[STARTUP] Found {len(Base.metadata.tables)} table(s) to create: {list(Base.metadata.tables.keys())}")
+    
+    if len(Base.metadata.tables) == 0:
+        print("[STARTUP] ❌ ERROR: No tables found in Base.metadata!")
+        print("[STARTUP] ❌ This means models were not imported correctly")
+        return
+    
     try:
         init_db()
         print("[STARTUP] ✅ Database initialization complete")
