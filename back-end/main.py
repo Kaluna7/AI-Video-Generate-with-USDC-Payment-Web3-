@@ -48,15 +48,11 @@ if load_dotenv:
 from database import get_db, engine, Base, init_db
 
 # Import all models - this registers them with Base.metadata
+# IMPORTANT: Models must be imported before init_db() is called
 from models import User, UserCoinBalance, CoinTopUpTx, StoredVideo
 
-# Initialize database - create all tables
-# This must be called AFTER all models are imported
-# Safe to call multiple times - won't recreate existing tables
-print("[MAIN] Initializing database...")
-print(f"[MAIN] Base.metadata.tables: {list(Base.metadata.tables.keys())}")
-init_db()
-print("[MAIN] Database initialization complete")
+# Note: init_db() will be called in FastAPI startup event
+# to ensure all models are registered before table creation
 
 
 # ==============================
@@ -2409,6 +2405,27 @@ def _kling_parse_video_url(data: Any) -> Optional[str]:
 
 app = FastAPI(title="Web3 Auth API")
 
+
+# Startup event - initialize database tables
+@app.on_event("startup")
+async def startup_event():
+    """
+    Initialize database tables on application startup.
+    This ensures all models are imported and registered before creating tables.
+    """
+    print("[STARTUP] Initializing database...")
+    print(f"[STARTUP] Found {len(Base.metadata.tables)} table(s) to create: {list(Base.metadata.tables.keys())}")
+    try:
+        init_db()
+        print("[STARTUP] ✅ Database initialization complete")
+    except Exception as e:
+        print(f"[STARTUP] ❌ Database initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
+        # Don't raise - let app start even if DB init fails (for debugging)
+        # In production, you might want to raise here
+
+
 # CORS configuration - MUST be added before routes
 # Get allowed origins from environment or use defaults
 cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
@@ -2440,6 +2457,31 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"message": "Web3 Auth API is running"}
+
+
+@app.post("/admin/db/init")
+def admin_init_db():
+    """
+    Manual database initialization endpoint.
+    Use this if auto-init fails in Railway.
+    """
+    try:
+        print("[ADMIN] Manual database initialization requested...")
+        print(f"[ADMIN] Found {len(Base.metadata.tables)} table(s): {list(Base.metadata.tables.keys())}")
+        init_db()
+        return {
+            "success": True,
+            "message": "Database tables initialized successfully",
+            "tables": list(Base.metadata.tables.keys())
+        }
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[ADMIN] Error: {error_trace}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to initialize database: {str(e)}"
+        )
 
 # Add OPTIONS handler for CORS preflight requests
 @app.options("/{full_path:path}")
