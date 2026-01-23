@@ -555,8 +555,13 @@ def _google_client_secret() -> str:
 
 def _google_redirect_uri() -> str:
     # Must match the "Authorized redirect URI" in Google Cloud Console
-    v = os.getenv("GOOGLE_REDIRECT_URI") or "http://localhost:8001/auth/google/callback"
-    return v.strip().strip('"').strip("'")
+    # Use GOOGLE_REDIRECT_URI if set, otherwise build from BACKEND_URL
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI")
+    if not redirect_uri:
+        # Build from BACKEND_URL (for Railway production)
+        backend_url = os.getenv("BACKEND_URL") or "http://localhost:8001"
+        redirect_uri = f"{backend_url.rstrip('/')}/auth/google/callback"
+    return redirect_uri.strip().strip('"').strip("'")
 
 
 def _frontend_url() -> str:
@@ -3251,7 +3256,15 @@ def get_video_job(
                 # OpenAI doesn't return video URL in status, need to download from /content endpoint
                 # Use our proxy endpoint which will save video to our server
                 # Get backend base URL from env or use default
-                backend_url = os.getenv("BACKEND_URL") or "http://localhost:8001"
+                # Use BACKEND_URL from environment (Railway production)
+                # Fallback to localhost only for development
+                backend_url = os.getenv("BACKEND_URL")
+                if not backend_url:
+                    # Development fallback
+                    backend_url = "http://localhost:8001"
+                    print("[Sora2] ⚠️  BACKEND_URL not set, using localhost (development mode)")
+                else:
+                    print(f"[Sora2] Using BACKEND_URL: {backend_url.split('@')[-1] if '@' in backend_url else backend_url[:50]}...")
                 backend_url = backend_url.strip().rstrip("/")
                 # Use our stored video endpoint if available, otherwise use download endpoint
                 # The download endpoint will save the video on first access

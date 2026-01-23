@@ -15,6 +15,9 @@ const setCookie = (name, value, days = 1) => {
 // Import API base URL function
 import { getApiBaseUrl } from '../../lib/api';
 
+// Make sure getApiBaseUrl is available
+const API_BASE_URL = getApiBaseUrl();
+
 function GoogleAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -62,8 +65,7 @@ function GoogleAuthCallbackContent() {
     // Fetch user info and redirect
     (async () => {
       try {
-        const API_BASE_URL = getApiBaseUrl();
-        const res = await fetch(`${API_BASE_URL}/auth/me`, {
+        const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) {
