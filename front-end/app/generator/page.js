@@ -16,7 +16,7 @@ import TextToVideoSection from '../components/generator/sections/TextToVideoSect
 import ImageToVideoSection from '../components/generator/sections/ImageToVideoSection';
 import GenerateConfirmModal from '../components/generator/modals/GenerateConfirmModal';
 import { useAuthStore } from '../store/authStore';
-import { createTextToVideoJob, getCoinBalance, getVideoJob, createTextToImageJob, getImageJob, addTokenToVideoUrl, getApiBaseUrl } from '../lib/api';
+import { createTextToVideoJob, getCoinBalance, getVideoJob, createTextToImageJob, getImageJob, addTokenToVideoUrl, getApiBaseUrl, normalizeVideoUrl } from '../lib/api';
 import { addVideoHistoryItem, formatRelativeTime, getVideoHistory, cleanupExpiredVideos } from '../lib/videoHistory';
 
 function GeneratorPageContent() {
@@ -270,18 +270,18 @@ function GeneratorPageContent() {
           // ignore
         }
         if (job.status === 'succeeded' && job.video_url) {
-          // Store original video URL (without token) for history
-          const originalVideoUrl = job.video_url;
+          // Normalize and store video URL (without token) for history
+          const normalizedUrl = normalizeVideoUrl(job.video_url);
           // Add token to video URL for authentication when displaying
-          const videoUrlWithToken = addTokenToVideoUrl(originalVideoUrl);
+          const videoUrlWithToken = addTokenToVideoUrl(normalizedUrl);
           setVideoUrl(videoUrlWithToken);
           setGenerationStatus('ready');
 
           const title =
             prompt.split(/[.\n]/)[0]?.trim().slice(0, 32) ||
             (currentView === 'image-to-video' ? 'Image to Video' : 'Text to Video');
-          
-          // Save video to history with original URL (token will be added when displaying)
+
+          // Save video to history with normalized URL (token will be added when displaying)
           try {
             // Get current historyUserId (may have changed if user logged in/out)
             const currentHistoryUserId = user?.id || walletAddress || 'anonymous';
@@ -299,7 +299,7 @@ function GeneratorPageContent() {
               type: activeTab === 'image' ? 'image' : 'text',
               title,
               prompt,
-              videoUrl: originalVideoUrl, // Store original URL, token added when displaying
+              videoUrl: normalizedUrl, // Store normalized URL, token added when displaying
               coinsSpent: job.coins_spent || cost,
               createdAt: Date.now(),
             });
@@ -335,10 +335,10 @@ function GeneratorPageContent() {
         const job = await getVideoJob(videoJobId);
         if (cancelled) return;
         if (job.status === 'succeeded' && job.video_url) {
-          // Store original video URL (without token) for history
-          const originalVideoUrl = job.video_url;
+          // Normalize and store video URL (without token) for history
+          const normalizedUrl = normalizeVideoUrl(job.video_url);
           // Add token to video URL for authentication when displaying
-          const videoUrlWithToken = addTokenToVideoUrl(originalVideoUrl);
+          const videoUrlWithToken = addTokenToVideoUrl(normalizedUrl);
           setVideoUrl(videoUrlWithToken);
           setGenerationStatus('ready');
           clearInterval(interval);
@@ -350,7 +350,7 @@ function GeneratorPageContent() {
             latestPrompt.split(/[.\n]/)[0]?.trim().slice(0, 32) ||
             (latestView === 'image-to-video' ? 'Image to Video' : 'Text to Video');
           
-          // Save video to history with original URL (token will be added when displaying)
+          // Save video to history with normalized URL (token will be added when displaying)
           try {
             // Get current historyUserId (may have changed if user logged in/out)
             const currentHistoryUserId = user?.id || walletAddress || 'anonymous';
@@ -368,7 +368,7 @@ function GeneratorPageContent() {
               type: latestTab === 'image' ? 'image' : 'text',
               title,
               prompt: latestPrompt,
-              videoUrl: originalVideoUrl, // Store original URL, token added when displaying
+              videoUrl: normalizedUrl, // Store normalized URL, token added when displaying
               createdAt: Date.now(),
             });
             setHistoryTick((t) => t + 1);

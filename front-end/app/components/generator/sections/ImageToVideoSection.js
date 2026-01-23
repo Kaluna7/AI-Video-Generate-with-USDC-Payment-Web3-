@@ -192,46 +192,65 @@ export default function ImageToVideoSection({ soraImageUrls, setSoraImageUrls })
                     {/* Upload Button or Preview */}
                     <div className="mt-3">
                       {imagePreview ? (
-                        <div className="space-y-2">
-                          <div className="relative rounded-lg overflow-hidden border border-purple-500/30 bg-black/40 max-h-32">
+                        <div className="space-y-3">
+                          <div className="relative rounded-xl overflow-hidden border-2 border-purple-500/40 bg-black/50 group">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={imagePreview}
                               alt="Uploaded preview"
-                              className="w-full h-auto max-h-32 object-contain mx-auto"
+                              className="w-full h-auto max-h-48 object-contain mx-auto"
                               onError={(e) => {
                                 e.target.style.display = 'none';
                               }}
                             />
+                            {/* Overlay on hover */}
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setUploadedFile(null);
+                                  setImagePreview(null);
+                                  if (setSoraImageUrls) {
+                                    setSoraImageUrls('');
+                                  }
+                                  if (fileInputRef.current) {
+                                    fileInputRef.current.value = '';
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-red-500/80 hover:bg-red-500 text-white text-xs rounded-lg transition-colors flex items-center gap-1.5"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                Remove
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs text-gray-400 truncate">{uploadedFile?.name || 'Image uploaded'}</p>
+                          <div className="flex items-center justify-between gap-2 px-1">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              <p className="text-xs text-gray-300 truncate font-medium">{uploadedFile?.name || 'Image uploaded'}</p>
+                            </div>
                             <button
-                              onClick={() => {
-                                setUploadedFile(null);
-                                setImagePreview(null);
-                                if (setSoraImageUrls) {
-                                  setSoraImageUrls('');
-                                }
-                                if (fileInputRef.current) {
-                                  fileInputRef.current.value = '';
-                                }
-                              }}
-                              className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="text-xs text-purple-400 hover:text-purple-300 transition-colors shrink-0"
                             >
-                              Remove
+                              Change
                             </button>
                           </div>
                         </div>
                       ) : (
                         <button
                           onClick={() => fileInputRef.current?.click()}
-                          className="w-full px-4 py-2.5 rounded-lg border-2 border-dashed border-purple-500/30 hover:border-purple-500/50 bg-purple-500/5 hover:bg-purple-500/10 transition-all flex items-center justify-center gap-2 text-sm text-purple-300 hover:text-purple-200"
+                          className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-purple-500/30 hover:border-purple-500/50 bg-purple-500/5 hover:bg-purple-500/10 transition-all flex flex-col items-center justify-center gap-2 text-sm text-purple-300 hover:text-purple-200 group"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-6 h-6 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
-                          <span>Choose Image</span>
+                          <span className="font-medium">Choose Image</span>
+                          <span className="text-xs text-gray-400">JPG, PNG, WebP (max 10MB)</span>
                         </button>
                       )}
                     </div>
@@ -285,25 +304,28 @@ export default function ImageToVideoSection({ soraImageUrls, setSoraImageUrls })
                     <span className="w-2 h-2 rounded-full bg-purple-300" />
                     Source image
                   </div>
-                  <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/30 p-4 flex items-center justify-center">
+                  <div className="rounded-2xl overflow-hidden border-2 border-white/20 bg-black/40 p-4 flex items-center justify-center min-h-[200px]">
                     {imagePreview ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img
                         src={imagePreview}
                         alt="Uploaded source"
-                        className="w-full h-auto max-h-48 object-contain drop-shadow-2xl"
+                        className="w-full h-auto max-h-[280px] object-contain drop-shadow-2xl rounded-lg"
                         onError={(e) => {
                           e.target.style.display = 'none';
                         }}
                       />
                     ) : (
-                      <Image
-                        src="/assets/images/coin-3d.svg"
-                        alt="Source"
-                        width={280}
-                        height={280}
-                        className="w-28 h-28 md:w-32 md:h-32 drop-shadow-2xl"
-                      />
+                      <div className="flex flex-col items-center justify-center gap-3 text-gray-500">
+                        <Image
+                          src="/assets/images/coin-3d.svg"
+                          alt="Source"
+                          width={120}
+                          height={120}
+                          className="w-24 h-24 md:w-28 md:h-28 drop-shadow-2xl opacity-50"
+                        />
+                        <p className="text-xs text-gray-500">Upload an image to preview</p>
+                      </div>
                     )}
                   </div>
                 </div>

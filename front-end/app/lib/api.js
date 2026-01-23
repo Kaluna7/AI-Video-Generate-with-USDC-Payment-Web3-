@@ -289,28 +289,54 @@ export const getAuthToken = () => {
 };
 
 /**
+ * Normalize video URL - replace localhost with correct API base URL if needed
+ */
+export const normalizeVideoUrl = (url) => {
+  if (!url) return url;
+  
+  // If we're in production (NEXT_PUBLIC_API_URL is set) and URL uses localhost, replace it
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+    // Replace localhost:8001 with production API URL
+    if (url.includes('localhost:8001') || url.startsWith('http://localhost:8001') || url.startsWith('https://localhost:8001')) {
+      return url.replace(/https?:\/\/localhost:8001/g, apiBaseUrl);
+    }
+    // If URL is relative, prepend API base URL
+    if (url.startsWith('/')) {
+      return `${apiBaseUrl}${url}`;
+    }
+  }
+  
+  return url;
+};
+
+/**
  * Add authentication token to video URL for download endpoints.
  * This is needed because video tags cannot send Authorization headers.
  */
 export const addTokenToVideoUrl = (url) => {
   if (!url) return url;
+  
+  // Normalize URL first (replace localhost with correct API URL if needed)
+  const normalizedUrl = normalizeVideoUrl(url);
+  
   const token = getAuthToken();
-  if (!token) return url;
+  if (!token) return normalizedUrl;
   
   // Check if token is already in the URL
   try {
-    const urlObj = new URL(url);
+    const urlObj = new URL(normalizedUrl);
     if (urlObj.searchParams.has('token')) {
       // Token already exists, return as is
-      return url;
+      return normalizedUrl;
     }
   } catch {
     // If URL parsing fails, continue with string manipulation
   }
   
   // Check if URL already has query parameters
-  const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}token=${encodeURIComponent(token)}`;
+  const separator = normalizedUrl.includes('?') ? '&' : '?';
+  return `${normalizedUrl}${separator}token=${encodeURIComponent(token)}`;
 };
 
 export const createTextToVideoJob = async ({
