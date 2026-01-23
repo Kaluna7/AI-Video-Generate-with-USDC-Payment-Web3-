@@ -54,4 +54,15 @@ Thumbs.db
 *.cert
 *.crt
 
+# Documentation files (keep only README.md)
+*.md
+!README.md
+
+# Environment example files
+.env.example
+*.env.example
+SMTP_TEST.env
+
+# Storage files (videos)
+storage/videos/*.mp4
 
