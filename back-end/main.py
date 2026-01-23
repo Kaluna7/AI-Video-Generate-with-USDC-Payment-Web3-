@@ -51,8 +51,19 @@ from database import get_db, engine, Base, init_db
 # IMPORTANT: Models must be imported before init_db() is called
 from models import User, UserCoinBalance, CoinTopUpTx, StoredVideo
 
+# Verify models are registered
+print(f"[MAIN] Models imported. Base.metadata.tables: {list(Base.metadata.tables.keys())}")
+
 # Note: init_db() will be called in FastAPI startup event
-# to ensure all models are registered before table creation
+# But also call it here as fallback to ensure tables are created
+# This is safe - create_all() won't recreate existing tables
+try:
+    print("[MAIN] Attempting to initialize database tables...")
+    init_db()
+    print("[MAIN] ✅ Database tables initialized (module level)")
+except Exception as e:
+    print(f"[MAIN] ⚠️  Database init at module level failed (will retry in startup): {e}")
+    # Don't raise - startup event will retry
 
 
 # ==============================
@@ -2507,13 +2518,36 @@ def admin_init_db():
     Use this if auto-init fails in Railway.
     """
     try:
+        import os
         print("[ADMIN] Manual database initialization requested...")
+        print(f"[ADMIN] DATABASE_URL exists: {bool(os.getenv('DATABASE_URL'))}")
+        db_url = os.getenv("DATABASE_URL", "")
+        if db_url:
+            print(f"[ADMIN] DATABASE_URL: {db_url.split('@')[-1] if '@' in db_url else db_url[:50]}...")
         print(f"[ADMIN] Found {len(Base.metadata.tables)} table(s): {list(Base.metadata.tables.keys())}")
+        
+        if len(Base.metadata.tables) == 0:
+            return {
+                "success": False,
+                "message": "No tables found in Base.metadata. Models may not be imported correctly.",
+                "tables": [],
+                "database_url_set": bool(os.getenv("DATABASE_URL"))
+            }
+        
         init_db()
+        
+        # Verify tables were created
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        
         return {
             "success": True,
             "message": "Database tables initialized successfully",
-            "tables": list(Base.metadata.tables.keys())
+            "expected_tables": list(Base.metadata.tables.keys()),
+            "created_tables": existing_tables,
+            "database_url_set": bool(os.getenv("DATABASE_URL")),
+            "database_type": "PostgreSQL" if db_url.startswith("postgresql") else "SQLite"
         }
     except Exception as e:
         import traceback
