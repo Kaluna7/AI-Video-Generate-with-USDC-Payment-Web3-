@@ -42,11 +42,6 @@ function FAQItem({ question, answer }) {
 
 export default function TextToVideoSection() {
   const sectionRef = useRef(null);
-  const scrollToTopRef = useRef(null);
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
   const promptingBars = [
     {
@@ -407,7 +402,6 @@ export default function TextToVideoSection() {
 
                 <div className="flex flex-col sm:flex-row gap-4 pt-4">
                   <button
-                    onClick={scrollToTop}
                     className="group px-8 py-4 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white rounded-xl font-bold text-lg md:text-xl hover:opacity-90 transition-all duration-300 shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 flex items-center justify-center gap-3"
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -472,18 +466,6 @@ export default function TextToVideoSection() {
           </div>
         </div>
       </div>
-
-      {/* Scroll to Top Button */}
-      <button
-        ref={scrollToTopRef}
-        onClick={scrollToTop}
-        className="fixed right-8 bottom-8 w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center hover:bg-purple-600 transition-colors shadow-lg z-50"
-        aria-label="Scroll to top"
-      >
-        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-        </svg>
-      </button>
     </div>
   );
 }
