@@ -2478,6 +2478,28 @@ def read_root():
     return {"message": "Web3 Auth API is running"}
 
 
+@app.get("/debug/env")
+def debug_env():
+    """
+    Debug endpoint to verify environment variables are loaded correctly.
+    ⚠️ REMOVE THIS ENDPOINT IN PRODUCTION after verification!
+    """
+    return {
+        "database": bool(os.getenv("DATABASE_URL")),
+        "jwt_secret": bool(os.getenv("JWT_SECRET_KEY")),
+        "gemini": bool(os.getenv("GEMINI_API_KEY")),
+        "sora2": bool(os.getenv("SORA2_API_KEY")),
+        "openai": bool(os.getenv("OPENAI_API_KEY")),
+        "kling_access": bool(os.getenv("KLING_ACCESS_KEY")),
+        "kling_secret": bool(os.getenv("KLING_SECRET_KEY")),
+        "veo3": bool(os.getenv("VEO3_API_KEY")),
+        "replicate": bool(os.getenv("REPLICATE_API_TOKEN")),
+        "circle": bool(os.getenv("CIRCLE_API_KEY")),
+        "google_client_id": bool(os.getenv("GOOGLE_CLIENT_ID")),
+        "google_client_secret": bool(os.getenv("GOOGLE_CLIENT_SECRET")),
+    }
+
+
 @app.post("/admin/db/init")
 def admin_init_db():
     """
