@@ -24,23 +24,33 @@ print(f"[DB] DATABASE_URL exists: {bool(DATABASE_URL)}")
 if DATABASE_URL:
     # Normalize common .env issues: surrounding quotes or trailing whitespace
     DATABASE_URL = DATABASE_URL.strip().strip('"').strip("'")
-    print(f"[DB] Using database: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else '***'}")
+    
+    # Validate PostgreSQL format for Railway
+    if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
+        print(f"[DB] ✅ Using PostgreSQL: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else '***'}")
+    else:
+        print(f"[DB] ⚠️  DATABASE_URL format: {DATABASE_URL[:20]}... (expected postgresql://)")
 else:
-    # Default to SQLite for development
+    # Default to SQLite for development (local only)
     DATABASE_URL = "sqlite:///./dev.db"
     print(f"[DB] ⚠️  DATABASE_URL not set, using default SQLite: {DATABASE_URL}")
+    print(f"[DB] ⚠️  For Railway production, set DATABASE_URL=${{{{ Postgres.DATABASE_URL }}}}")
 
 # Create engine with connection pooling for production (PostgreSQL)
 # For PostgreSQL, use pool_pre_ping to handle connection drops
-if DATABASE_URL.startswith("postgresql"):
+if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
+    # PostgreSQL for Railway production
+    print("[DB] 🔵 Configuring PostgreSQL engine with connection pooling...")
     engine = create_engine(
         DATABASE_URL,
         pool_pre_ping=True,  # Verify connections before using
         pool_size=5,
         max_overflow=10
     )
+    print("[DB] ✅ PostgreSQL engine ready")
 else:
-    # SQLite doesn't need connection pooling
+    # SQLite for local development (fallback)
+    print("[DB] 🟡 Using SQLite engine (development mode)")
     engine = create_engine(DATABASE_URL)
 
 # Create sessionmaker
